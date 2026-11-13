@@ -14,8 +14,16 @@ The sheet also holds addresses and phone numbers, so access must be limited to t
 
 ## Decision
 Use a **Google Cloud service account**: a robot Google account in a free Google Cloud project
-(Sheets API enabled, no billing account). The sheet is shared with the robot's email as
-**Viewer**, so the robot can read that sheet and nothing else.
+(Sheets API enabled, no billing account). The sheet is shared with the robot's email, so the
+robot can reach that sheet and nothing else.
+
+**Shared as Editor from the start; read-only until Phase 2.** The webmaster can't share the
+sheet, so the owner (the APS president) must approve the share request. To ask them **once**,
+not once now and again for Phase 2, the robot is shared as **Editor** straight away. What the tool
+can actually do is limited separately, by the **scope** it asks Google for when it signs in:
+`spreadsheets.readonly` until Phase 2's write-back is built and reviewed. With that scope Google
+refuses any change, whatever the share allows. Switching to the `spreadsheets` scope later needs
+no new key and no approval from anyone.
 
 - The robot's JSON key is stored like every other key (Keychain or 1Password reference). To stay
   under the Keychain's size limit and paste cleanly into one 1Password field, only the needed
@@ -51,7 +59,10 @@ Use a **Google Cloud service account**: a robot Google account in a free Google 
   project.
 - Someone tidying the sheet's sharing list could remove the robot. The guide says to tell the
   membership chair and the sheet's owner what it is.
-- **Phase 2 write-back:** change the robot to Editor on the sheet and ask for the `spreadsheets`
-  scope. No new key is needed.
+- **Phase 2 write-back:** a code change only: ask for the `spreadsheets` scope and write to
+  columns the tool owns. The Editor share and the key stay as they are.
+- Until then, the key could in principle be used by *other* software to edit the sheet, because the
+  share allows it. That's one more reason to keep the key only in the Keychain or 1Password and
+  delete the download.
 - **Handover:** the successor can keep the robot and receive the key, or make their own and
   re-share. Deleting the key in Google Cloud cuts access immediately.

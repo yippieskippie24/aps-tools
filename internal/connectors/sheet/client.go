@@ -95,7 +95,7 @@ func (c *Client) explainStatus(code int, body []byte) error {
 	case strings.Contains(msg, "has not been used") || strings.Contains(msg, "is disabled") || strings.Contains(msg, "service_disabled"):
 		return errors.New("the Google Sheets API isn't turned on for the tool's Google Cloud project — in Google Cloud: APIs & Services → Library → Google Sheets API → Enable (docs/setup/google-sheet.md)")
 	case code == http.StatusForbidden:
-		return fmt.Errorf("the sheet isn't shared with the tool — in the sheet, click Share and add %s as a Viewer", c.key.ClientEmail)
+		return fmt.Errorf("the sheet isn't shared with the tool (or the share is still waiting for the owner's approval) — in the sheet, click Share and add %s as an Editor", c.key.ClientEmail)
 	case code == http.StatusNotFound:
 		return errors.New("Google couldn't find that spreadsheet — check the link, or that it's shared with the tool")
 	case code == http.StatusBadRequest && strings.Contains(msg, "unable to parse range"):

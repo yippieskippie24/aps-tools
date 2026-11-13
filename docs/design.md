@@ -40,7 +40,7 @@ One installable terminal app (`aps-tools`) that:
 
 | System | What a member needs there | How the tool talks to it | Status |
 |---|---|---|---|
-| **Membership Google Sheet** | A row with "App vetted" marked (this is the master list) | Google Sheets API via a free service account, shared on the sheet as Viewer ([0009](decisions/0009-google-service-account.md)) | **Check built** ([setup](setup/google-sheet.md)) |
+| **Membership Google Sheet** | A row with "App vetted" marked (this is the master list) | Google Sheets API via a free service account, shared on the sheet as Editor, read-only scope until Phase 2 ([0009](decisions/0009-google-service-account.md)) | **Check built** ([setup](setup/google-sheet.md)) |
 | **Mailing list (Cloudflare)** | Their email is on the list **and** verified with Cloudflare | Cloudflare API (Email Routing + Worker), read-only token | **Verification check built**; list check after discovery ([setup](setup/cloudflare.md)) |
 | **Jira Service Management** (free plan) | They are a customer on the APS service desk | Jira Cloud REST API with an API token | **Check built** ([setup](setup/jira.md)) |
 | **Discourse** (hosted by Discourse) | An active account (or a pending invite), optionally in a member group | User API key approved in the browser, read-only (admin API keys need a Pro plan — [0008](decisions/0008-discourse-user-api-key.md)) | **Check built and connected** to the real forum ([setup](setup/discourse.md)) |

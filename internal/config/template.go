@@ -83,7 +83,8 @@ spreadsheet_title = {{ q .Sheet.SpreadsheetTitle }}
 # The tab (at the bottom of the sheet) that lists the members.
 tab = {{ q .Sheet.Tab }}
 # The Google "service account" the tool reads as. Share the sheet with this
-# address (Viewer is enough) or the tool can't see it.
+# address as an Editor, or the tool can't see it. (Editor is for writing back
+# setup status in a later version; the tool currently only reads.)
 service_account = {{ q .Sheet.ServiceAccount }}
 `
 

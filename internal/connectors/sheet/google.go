@@ -2,8 +2,11 @@ package sheet
 
 // This file signs in to Google as a "service account": a robot Google
 // account that belongs to a free Google Cloud project. The membership sheet
-// is shared with the robot's email address (as Viewer), so the tool can read
-// it without anyone's personal password. Why: docs/decisions/0009-google-service-account.md.
+// is shared with the robot's email address (as Editor, so Phase 2 can write
+// back without asking the owner again), so the tool can use it without
+// anyone's personal password. Until Phase 2, the tool still only asks Google
+// for read-only access (ReadOnlyScope), so it can't change the sheet even
+// though the share would allow it. Why: docs/decisions/0009-google-service-account.md.
 //
 // How the sign-in works (Google's "OAuth 2.0 for server to server"):
 //  1. The tool writes a short note saying "I am <robot email>, I want

@@ -43,7 +43,7 @@ the same email is on more than one row. It **never** shows addresses or phone nu
 Google doesn't let a program use your password. Instead, you create a **service account**: a
 robot Google account with its own email address (like
 `aps-tools-reader@your-project.iam.gserviceaccount.com`) and a key file. You **share the sheet
-with the robot as a Viewer**, just as you'd share it with a person. The tool signs in as the robot,
+with the robot as an Editor**, just as you'd share it with a person. The tool signs in as the robot,
 so it can read that one sheet and nothing else in anyone's Google Drive.
 
 It's **free**: a Google Cloud project with the Sheets API needs no billing account. Background:
@@ -110,7 +110,7 @@ aps-tools setup sheet
 3. Setup tries to read the sheet. The first time, it can't, because the sheet isn't shared yet. It
    then puts the robot's email on your clipboard and asks you to:
    - open the sheet → **Share**;
-   - paste the robot's email and set it to **Viewer**;
+   - paste the robot's email and set it to **Editor**;
    - untick **Notify people**, then **Share**.
 
    Then choose **Yes, I've shared it**. If you can't share the sheet, ask its owner to.
@@ -127,7 +127,7 @@ aps-tools setup sheet
 6. It offers to **delete the downloaded key file**. Say yes.
 
 **Tell the membership chair (and the sheet's owner)** that `aps-tools-reader@…` in the sharing list
-is the webmaster tool, read-only. Otherwise someone tidying the sharing list may remove it.
+is the webmaster tool. It reads the sheet now, and will record setup status later. Otherwise someone tidying the sharing list may remove it.
 
 ## 3. See what the tool understands
 
@@ -159,10 +159,20 @@ If the chosen tab is **renamed or deleted**, checks say "Couldn't check" and ask
 - **Completely:** in Google Cloud, open the service account → **Keys** → delete the key (or
   delete the whole `aps-tools` project).
 
-## Phase 2: writing back
+## Why Editor, when the tool only reads?
 
-To record "setup complete" on the sheet, the robot will need to be changed from **Viewer** to
-**Editor** in the sheet's Share list. No new key is needed.
+Phase 2 will write "setup complete" back to the sheet, and that needs Editor. If you can't share the
+sheet yourself, its owner has to approve the request. Asking for **Editor now** means they only
+approve **once**.
+
+What the tool can actually do is limited separately. When it signs in, it asks Google for
+**read-only** access (`spreadsheets.readonly`), and Google then refuses any change, even though the
+share would allow it. Phase 2 will switch that to read-write, which needs no new key and no new
+approval.
+
+**If the owner must approve the share:** run setup up to the sharing step, and when it says it
+can't read the sheet, choose **Stop**. Nothing is saved. Once the owner approves, run
+`aps-tools setup sheet` again.
 
 ## What's stored where
 

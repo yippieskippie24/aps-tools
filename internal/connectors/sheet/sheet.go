@@ -6,7 +6,9 @@
 // webmaster set them up in the other systems.
 //
 // How it authenticates: a Google "service account" (a robot Google account
-// in a free Google Cloud project) that the sheet is shared with as Viewer.
+// in a free Google Cloud project) that the sheet is shared with as Editor.
+// The Editor share is for Phase 2's write-back; for now the tool signs in
+// with a read-only scope, so it can only read.
 // Its key is kept in the Keychain or 1Password. Setup guide:
 // docs/setup/google-sheet.md.
 //

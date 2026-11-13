@@ -134,9 +134,10 @@ func setupSheet(ctx context.Context, out io.Writer) error {
 		lipgloss.Fprintln(out)
 		lipgloss.Fprintln(out, boldStyle.Render("Share the sheet with the tool")+dimStyle.Render("  (its address is on your clipboard)"))
 		lipgloss.Fprintln(out, "  1. Open the sheet → "+boldStyle.Render("Share")+".")
-		lipgloss.Fprintln(out, "  2. Paste "+boldStyle.Render(key.ClientEmail)+", set it to "+boldStyle.Render("Viewer")+",")
+		lipgloss.Fprintln(out, "  2. Paste "+boldStyle.Render(key.ClientEmail)+", set it to "+boldStyle.Render("Editor")+",")
 		lipgloss.Fprintln(out, "     untick \"Notify people\" (it's a robot), and click Share.")
-		lipgloss.Fprintln(out, dimStyle.Render("  Can't share it? Ask whoever owns the sheet to do this step."))
+		lipgloss.Fprintln(out, dimStyle.Render("  Editor is for writing back setup status in a later version. For now the tool only reads."))
+		lipgloss.Fprintln(out, dimStyle.Render("  Can't share it yourself? Google sends the owner a request. Stop here and run setup again once it's approved."))
 		again := true
 		retry := huh.NewForm(huh.NewGroup(huh.NewConfirm().
 			Title("Try reading the sheet again?").
