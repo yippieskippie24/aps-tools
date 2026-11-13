@@ -28,6 +28,14 @@ const (
 	// Management. See docs/setup/jira.md.
 	JiraAPIToken = "jira-api-token"
 
+	// CloudflareAPIToken is the read-only Cloudflare API token used for
+	// Email Routing and the mailing list. See docs/setup/cloudflare.md.
+	CloudflareAPIToken = "cloudflare-api-token"
+
+	// DiscourseAPIKey is the read-only Discourse admin API key.
+	// See docs/setup/discourse.md.
+	DiscourseAPIKey = "discourse-api-key"
+
 	// probeKey is never actually stored; Doctor looks it up only to prove
 	// the Keychain can be reached.
 	probeKey = "doctor-probe"

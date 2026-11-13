@@ -58,10 +58,11 @@ Try `check` with the email of a member you *know* is a customer, and one you kno
 | ✗ **Problem** | They're a customer, but their Atlassian account is deactivated. |
 | ? **Couldn't check** | Jira couldn't be reached or the token was rejected. Run `aps-tools doctor`. |
 
-> **Known limitation to watch for:** Some users report that Jira's customer search through the
-> API can miss customers who do appear on the **Customers** page in Jira. If the tool says
-> "Not set up" for someone you can see on that page, note their situation (e.g. how they were
-> added, or whether they belong to an organization) so the tool can be adjusted.
+> **Known limitation to watch for:** Some Jira users report that the customer search through
+> the API can miss customers who do appear on the **Customers** page in Jira. On the APS
+> service desk, results matched the Customers page when tested (2026-11-13). If the tool ever
+> says "Not set up" for someone you can see on that page, note their situation (e.g. how they
+> were added, or whether they belong to an organization) so the tool can be adjusted.
 
 ## When the token expires
 

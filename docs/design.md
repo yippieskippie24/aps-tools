@@ -41,9 +41,9 @@ One installable terminal app (`aps-tools`) that:
 | System | What a member needs there | How the tool talks to it | Status |
 |---|---|---|---|
 | **Membership Google Sheet** | A row (this is the master list) | Google Sheets API via a free service account | To build |
-| **Mailing list (Cloudflare)** | Their email is on the list **and** verified with Cloudflare | Cloudflare API (Email Routing + Worker) | To investigate |
+| **Mailing list (Cloudflare)** | Their email is on the list **and** verified with Cloudflare | Cloudflare API (Email Routing + Worker), read-only token | **Verification check built**; list check after discovery ([setup](setup/cloudflare.md)) |
 | **Jira Service Management** (free plan) | They are a customer on the APS service desk | Jira Cloud REST API with an API token | **Check built** ([setup](setup/jira.md)) |
-| **Discourse** (hosted by Discourse) | An account / invite, possibly group membership | Discourse Admin API key | To investigate |
+| **Discourse** (hosted by Discourse) | An active account (or a pending invite), optionally in a member group | Discourse API key (single user, Read-only) | **Check built** ([setup](setup/discourse.md)) |
 | **Welcome email** | They receive instructions on what to do next | Generated HTML "copy page"; sent by hand from the webmaster's own mailbox | To build |
 | ~~Squarespace website~~ | — | — | **Out of scope.** Being retired Dec 2026; the new site has no user accounts. |
 
@@ -91,7 +91,11 @@ stop at.
 ### Phase 1 — Member check (read-only) 🔨 in progress
 
 Progress: the check engine, `aps-tools check`, the "Check a member" screen, guided setup, and
-1Password support are built. **Jira is connected**. Google Sheet, Cloudflare and Discourse are next.
+1Password support are built. **Jira is connected and confirmed with real data.** **Cloudflare**:
+the full check is built: verification, all-members list (`LIST_NEWS`), and other lists. So is
+`cloudflare discover`, which counts undeliverable list members. It works on the test account
+now, and on the APS account after the December 2026 switch-over
+([decision 0007](decisions/0007-mailing-lists-in-worker-variables.md)). **Discourse**: the check and `discourse discover` are built. **Google Sheet is the last Phase 1 system.**
 
 - Connectors for Google Sheet, Cloudflare, Jira, Discourse that can **look up** a member.
 - `aps-tools check <email>` and a TUI "Check a member" screen.
@@ -138,11 +142,11 @@ Progress: the check engine, `aps-tools check`, the "Check a member" screen, guid
 
 | # | Question | How we'll answer it |
 |---|---|---|
-| 1 | Where does the Cloudflare Worker keep the list of member addresses? | Inspect the Worker once a Cloudflare API token is set up. |
-| 2 | How is Discourse sign-up configured (invite-only, approval, groups, SSO)? | Build `aps-tools discourse discover` and run it. |
+| 1 | Where does the Cloudflare Worker keep the list of member addresses? | **Answered (2026-11-13):** there is no list Worker yet. APS email moves to Cloudflare in **December 2026**. Until then Email Routing is off, but members are already verifying their addresses. The list design (tested in a separate account) keeps each list in a Text variable `LIST_<NAME>` on one Worker; see [decision 0007](decisions/0007-mailing-lists-in-worker-variables.md). |
+| 2 | How is Discourse sign-up configured (invite-only, approval, groups, SSO)? | `aps-tools discourse discover` is built. Run it against the APS forum to answer this. |
 | 3 | What are the Google Sheet's column headers, and which columns should the tool write? | Review headers (no member data needed). |
 | 4 | What should the welcome email say? | Write it together in Phase 2. |
-| 5 | ~~Which Jira service desk ID / customer setup is used?~~ | **Answered:** `aps-tools setup jira` lists the service desks and saves the chosen one. Still to confirm with real data: does the API's customer search find every customer? |
+| 5 | ~~Which Jira service desk ID / customer setup is used?~~ | **Answered:** `aps-tools setup jira` lists the service desks and saves the chosen one. Confirmed on 2026-11-13 against the real APS service desk: known customers and a known non-customer were all reported correctly. |
 
 ## 7. Decisions
 

@@ -47,7 +47,8 @@ When a system's setup (e.g. `aps-tools setup jira`) asks for a key:
    vault of your choice.
 2. Open the item, click the **arrow (⌄) next to the field** that holds the key, and choose
    **Copy Secret Reference**.
-3. Paste that into setup. It looks like `op://Private/Jira API token/credential`.
+3. Paste that into setup. It looks like `op://Private/Jira API token/credential`. If the item's
+   name has spaces, 1Password wraps the reference in quotes. That's fine; paste it exactly as copied.
 
 Setup reads the key through 1Password and tests it before saving anything.
 

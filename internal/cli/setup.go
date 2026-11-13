@@ -47,6 +47,22 @@ Run "aps-tools setup" on its own to see what's connected.`,
 			},
 		},
 		&cobra.Command{
+			Use:   "cloudflare",
+			Short: "Connect Cloudflare (APS email and the mailing list)",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return setupCloudflare(cmd.Context(), cmd.OutOrStdout())
+			},
+		},
+		&cobra.Command{
+			Use:   "discourse",
+			Short: "Connect the Discourse forum",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return setupDiscourse(cmd.Context(), cmd.OutOrStdout())
+			},
+		},
+		&cobra.Command{
 			Use:   "jira",
 			Short: "Connect Jira Service Management",
 			Args:  cobra.NoArgs,
@@ -177,6 +193,10 @@ func refField(cfg *config.Config, key string) *string {
 	switch key {
 	case secrets.JiraAPIToken:
 		return &cfg.Secrets.JiraAPITokenRef
+	case secrets.CloudflareAPIToken:
+		return &cfg.Secrets.CloudflareAPITokenRef
+	case secrets.DiscourseAPIKey:
+		return &cfg.Secrets.DiscourseAPIKeyRef
 	}
 	panic("refField: no settings field for secret " + key)
 }
@@ -223,7 +243,7 @@ func (s *secretAsk) field(howToGet string) huh.Field {
 func (s *secretAsk) value() (string, error) {
 	typed := strings.TrimSpace(s.typed)
 	if s.cfg.Secrets.UsesOnePassword() {
-		return secrets.ReadReference(typed)
+		return secrets.ReadReference(secrets.CleanReference(typed))
 	}
 	if typed == "" {
 		return secrets.Keychain().Get(s.key)
@@ -236,7 +256,7 @@ func (s *secretAsk) value() (string, error) {
 func (s *secretAsk) save() error {
 	typed := strings.TrimSpace(s.typed)
 	if s.cfg.Secrets.UsesOnePassword() {
-		*refField(s.cfg, s.key) = typed
+		*refField(s.cfg, s.key) = secrets.CleanReference(typed)
 		return nil
 	}
 	if typed == "" {
@@ -248,7 +268,7 @@ func (s *secretAsk) save() error {
 // where describes where the key ended up, for the final message.
 func (s *secretAsk) where() string {
 	if s.cfg.Secrets.UsesOnePassword() {
-		return "key: 1Password (" + strings.TrimSpace(s.typed) + ")"
+		return "key: 1Password (" + secrets.CleanReference(s.typed) + ")"
 	}
 	return "key: Keychain (aps-tools)"
 }

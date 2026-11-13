@@ -27,7 +27,9 @@ func ForConfig(cfg *config.Config) Store {
 		return Keychain()
 	}
 	return OnePassword(map[string]string{
-		JiraAPIToken: cfg.Secrets.JiraAPITokenRef,
+		JiraAPIToken:       cfg.Secrets.JiraAPITokenRef,
+		CloudflareAPIToken: cfg.Secrets.CloudflareAPITokenRef,
+		DiscourseAPIKey:    cfg.Secrets.DiscourseAPIKeyRef,
 	})
 }
 
@@ -48,7 +50,7 @@ type onePasswordStore struct {
 }
 
 func (s onePasswordStore) Get(key string) (string, error) {
-	ref := strings.TrimSpace(s.refs[key])
+	ref := CleanReference(s.refs[key])
 	if ref == "" {
 		return "", ErrNotFound
 	}
@@ -67,7 +69,7 @@ func (s onePasswordStore) Delete(key string) error { return nil }
 // ReadReference reads one secret reference directly. Setup uses it to test a
 // reference before saving it.
 func ReadReference(ref string) (string, error) {
-	return runOp("read", "--no-newline", strings.TrimSpace(ref))
+	return runOp("read", "--no-newline", CleanReference(ref))
 }
 
 // CheckOnePassword confirms the op tool is installed and connected to the
@@ -86,9 +88,25 @@ func CheckOnePassword() error {
 	return nil
 }
 
-// LooksLikeReference reports whether s is shaped like a secret reference.
-func LooksLikeReference(s string) bool {
+// CleanReference tidies a pasted secret reference. 1Password wraps references
+// that contain spaces in quotes when you copy them (e.g. "op://Private/My
+// Item/credential"), so surrounding quotes — straight or curly — and spaces
+// are removed.
+func CleanReference(s string) string {
 	s = strings.TrimSpace(s)
+	for _, q := range [][2]string{{`"`, `"`}, {`'`, `'`}, {"\u201c", "\u201d"}, {"\u2018", "\u2019"}} {
+		if len(s) >= 2 && strings.HasPrefix(s, q[0]) && strings.HasSuffix(s, q[1]) {
+			s = strings.TrimSpace(s[len(q[0]) : len(s)-len(q[1])])
+			break
+		}
+	}
+	return s
+}
+
+// LooksLikeReference reports whether s is shaped like a secret reference.
+// Surrounding quotes are allowed (see CleanReference).
+func LooksLikeReference(s string) bool {
+	s = CleanReference(s)
 	return strings.HasPrefix(s, "op://") && strings.Count(s, "/") >= 4
 }
 

@@ -62,9 +62,43 @@ func TestForConfig(t *testing.T) {
 	}
 }
 
+func TestCleanReference(t *testing.T) {
+	want := "op://Private/APS Atlassian API Token/credential"
+	for _, in := range []string{
+		want,
+		`"op://Private/APS Atlassian API Token/credential"`, // how 1Password copies it
+		` "op://Private/APS Atlassian API Token/credential" `,
+		`'op://Private/APS Atlassian API Token/credential'`,
+		"\u201cop://Private/APS Atlassian API Token/credential\u201d", // curly quotes
+	} {
+		if got := CleanReference(in); got != want {
+			t.Errorf("CleanReference(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestQuotedReferenceIsReadWithoutQuotes(t *testing.T) {
+	var gotRef string
+	s := onePasswordStore{
+		refs: map[string]string{JiraAPIToken: `"op://Private/APS Atlassian API Token/credential"`},
+		run:  func(args ...string) (string, error) { gotRef = args[len(args)-1]; return "x", nil },
+	}
+	if _, err := s.Get(JiraAPIToken); err != nil {
+		t.Fatal(err)
+	}
+	if gotRef != "op://Private/APS Atlassian API Token/credential" {
+		t.Errorf("op was given %q; quotes should be removed", gotRef)
+	}
+}
+
 func TestLooksLikeReference(t *testing.T) {
-	if !LooksLikeReference(" op://APS/Jira API token/credential ") {
-		t.Error("a real reference was rejected")
+	for _, good := range []string{
+		" op://APS/Jira API token/credential ",
+		`"op://Private/APS Atlassian API Token/credential"`,
+	} {
+		if !LooksLikeReference(good) {
+			t.Errorf("%q was rejected", good)
+		}
 	}
 	for _, bad := range []string{"", "my-token", "op://APS", "https://example.com/a/b/c"} {
 		if LooksLikeReference(bad) {

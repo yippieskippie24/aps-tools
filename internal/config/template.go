@@ -36,6 +36,8 @@ store = {{ q .Secrets.Store }}
 # for each key — never the key itself. In 1Password, open the item, click the
 # arrow next to the field, and choose "Copy Secret Reference".
 jira_api_token_ref = {{ q .Secrets.JiraAPITokenRef }}
+cloudflare_api_token_ref = {{ q .Secrets.CloudflareAPITokenRef }}
+discourse_api_key_ref = {{ q .Secrets.DiscourseAPIKeyRef }}
 
 [jira]
 # Your Jira Cloud site address, without https:// — e.g. "example.atlassian.net".
@@ -46,8 +48,27 @@ email = {{ q .Jira.Email }}
 service_desk_id = {{ q .Jira.ServiceDeskID }}
 service_desk_name = {{ q .Jira.ServiceDeskName }}
 
-# More sections (Google Sheet, Cloudflare, Discourse) will appear here as
-# each connection is added to the tool.
+[cloudflare]
+# The Cloudflare account and domain (zone) that APS email runs on.
+# "aps-tools setup cloudflare" fills these in.
+account_id = {{ q .Cloudflare.AccountID }}
+account_name = {{ q .Cloudflare.AccountName }}
+zone_id = {{ q .Cloudflare.ZoneID }}
+zone_name = {{ q .Cloudflare.ZoneName }}
+# Which group address goes to ALL members — the part before the @.
+# Leave empty for "news" (news@). "aps-tools setup cloudflare" can set it.
+members_list = {{ q .Cloudflare.MembersList }}
+
+[discourse]
+# The forum's address, e.g. "https://forum.example.org".
+url = {{ q .Discourse.URL }}
+# YOUR Discourse username — the admin account the API key belongs to.
+username = {{ q .Discourse.Username }}
+# The group every member should be in, e.g. "members". Leave empty to skip
+# the group check. "aps-tools setup discourse" lets you pick it.
+member_group = {{ q .Discourse.MemberGroup }}
+
+# A section for the Google Sheet will appear here once it's added.
 `
 
 var tmpl = template.Must(template.New("config").Funcs(template.FuncMap{"q": tomlString}).Parse(fileTemplate))

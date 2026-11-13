@@ -37,6 +37,48 @@ type Config struct {
 	// Jira holds the settings for Jira Service Management.
 	// See docs/setup/jira.md.
 	Jira Jira `toml:"jira"`
+
+	// Cloudflare holds the settings for APS email and the mailing list.
+	// See docs/setup/cloudflare.md.
+	Cloudflare Cloudflare `toml:"cloudflare"`
+
+	// Discourse holds the settings for the APS forum.
+	// See docs/setup/discourse.md.
+	Discourse Discourse `toml:"discourse"`
+}
+
+// Discourse holds the settings for the APS Discourse forum.
+type Discourse struct {
+	// URL is the forum's address, e.g. "https://forum.example.org".
+	URL string `toml:"url"`
+	// Username is the webmaster's own Discourse username (the API key's owner).
+	Username string `toml:"username"`
+	// MemberGroup is the group every member should be in. Empty = don't check.
+	MemberGroup string `toml:"member_group"`
+}
+
+// Cloudflare holds the settings for Cloudflare Email Routing.
+type Cloudflare struct {
+	// AccountID and AccountName identify the Cloudflare account APS email is in.
+	AccountID   string `toml:"account_id"`
+	AccountName string `toml:"account_name"`
+	// ZoneID and ZoneName identify the APS domain, e.g. "example.org".
+	ZoneID   string `toml:"zone_id"`
+	ZoneName string `toml:"zone_name"`
+	// MembersList is the group address that goes to ALL members, given as
+	// the part before the @ (e.g. "news"). Empty means "news".
+	MembersList string `toml:"members_list"`
+}
+
+// DefaultMembersList is used when MembersList isn't set.
+const DefaultMembersList = "news"
+
+// MembersListName returns the all-members list name, or the default.
+func (c Cloudflare) MembersListName() string {
+	if c.MembersList == "" {
+		return DefaultMembersList
+	}
+	return c.MembersList
 }
 
 // Where API keys can be stored. See internal/secrets.
@@ -54,6 +96,12 @@ type Secrets struct {
 	// JiraAPITokenRef is the 1Password secret reference (op://...) for the
 	// Jira API token. Only used when Store is "1password".
 	JiraAPITokenRef string `toml:"jira_api_token_ref"`
+	// CloudflareAPITokenRef is the 1Password secret reference for the
+	// Cloudflare API token. Only used when Store is "1password".
+	CloudflareAPITokenRef string `toml:"cloudflare_api_token_ref"`
+	// DiscourseAPIKeyRef is the 1Password secret reference for the
+	// Discourse API key. Only used when Store is "1password".
+	DiscourseAPIKeyRef string `toml:"discourse_api_key_ref"`
 }
 
 // UsesOnePassword reports whether keys should be read from 1Password.

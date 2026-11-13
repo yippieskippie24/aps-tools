@@ -137,7 +137,7 @@ func Run(ctx context.Context, d Deps) []Result {
 	if len(conns) == 0 {
 		results = append(results, Result{
 			Name: "APS systems", Status: Info,
-			Detail: "No systems connected yet. Google Sheets, Cloudflare, Jira and Discourse are added in Phase 1.",
+			Detail: "No systems connected yet.",
 		})
 		return results
 	}
