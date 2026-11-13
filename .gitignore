@@ -1,0 +1,22 @@
+# Build output
+/aps-tools
+/dist/
+
+# Local/editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ---- Safety net: never commit secrets or member data (see docs/decisions/0005) ----
+config.toml
+*.env
+.env*
+*.pem
+*.key
+*service-account*.json
+*credentials*.json
+*.csv
+*.xlsx
+*.db
+*.sqlite

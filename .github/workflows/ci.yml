@@ -1,0 +1,26 @@
+# Runs the tests on every push and pull request. A red ✗ on GitHub means
+# something is broken — fix it before releasing.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest # the tool targets macOS (Keychain), so test there
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Build
+        run: go build ./cmd/aps-tools

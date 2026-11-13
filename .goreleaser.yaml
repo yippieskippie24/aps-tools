@@ -1,0 +1,73 @@
+# GoReleaser builds and publishes a release whenever a version tag (e.g. v0.1.0)
+# is pushed. It runs automatically in GitHub Actions (.github/workflows/release.yml).
+# See docs/development.md → "Releasing a new version" and
+# docs/decisions/0002-homebrew-distribution.md.
+#
+# Validate changes locally with:  goreleaser check
+version: 2
+
+project_name: aps-tools
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: aps-tools
+    main: ./cmd/aps-tools
+    binary: aps-tools
+    env:
+      - CGO_ENABLED=0 # fully self-contained binary
+    goos: [darwin, linux]
+    goarch: [arm64, amd64]
+    # Stamp the version into internal/version (shown by `aps-tools version`).
+    ldflags:
+      - -s -w
+      - -X github.com/yippieskippie24/aps-tools/internal/version.Version={{ .Tag }}
+      - -X github.com/yippieskippie24/aps-tools/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/yippieskippie24/aps-tools/internal/version.Date={{ .Date }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# Publishes/updates the Homebrew cask in the yippieskippie24/homebrew-tap repo,
+# so users can run:  brew install yippieskippie24/tap/aps-tools
+homebrew_casks:
+  - name: aps-tools
+    binaries: [aps-tools]
+    homepage: https://github.com/yippieskippie24/aps-tools
+    description: Terminal app for managing APS member access across systems
+    license: MIT
+    repository:
+      owner: yippieskippie24
+      name: homebrew-tap
+      # A fine-grained token with write access to homebrew-tap, stored as a
+      # repository secret. See docs/development.md → "One-time release setup".
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    # The binary isn't signed by Apple (that costs $99/yr). Removing the
+    # download "quarantine" flag lets macOS run it without a Gatekeeper warning.
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/aps-tools"]
+          end
