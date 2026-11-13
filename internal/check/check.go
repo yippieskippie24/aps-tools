@@ -89,10 +89,15 @@ func Run(ctx context.Context, conns []connectors.Connector, email string, notYet
 // readable "Couldn't check" result rather than failing the whole report.
 func checkOne(ctx context.Context, c connectors.Connector, email string) connectors.MemberStatus {
 	if missing := c.Missing(); len(missing) > 0 {
+		// Say exactly what's missing (e.g. a share waiting for approval),
+		// without repeating the "run setup" hint the Fix line already gives.
+		rerun := fmt.Sprintf("aps-tools setup %s", c.ID())
+		needed := strings.TrimSuffix(connectors.JoinPlain(missing), " (run: "+rerun+")")
 		return connectors.MemberStatus{
 			State:   connectors.StateUnknown,
 			Summary: "Not connected yet.",
-			Fix:     fmt.Sprintf("Run: aps-tools setup %s", c.ID()),
+			Details: []string{"Still needed: " + needed + "."},
+			Fix:     "Run: " + rerun,
 		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, systemTimeout)

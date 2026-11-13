@@ -49,7 +49,7 @@ func TestNormalizeEmail(t *testing.T) {
 func TestRunGathersResultsInOrder(t *testing.T) {
 	ok := &fakeConnector{name: "Alpha", status: connectors.MemberStatus{State: connectors.StateOK, Summary: "fine"}}
 	missing := &fakeConnector{name: "Beta", status: connectors.MemberStatus{State: connectors.StateMissing, Summary: "not there", Fix: "add them"}}
-	unset := &fakeConnector{name: "Gamma", missing: []string{"an API key"}}
+	unset := &fakeConnector{name: "Gamma", missing: []string{"the owner's approval", "an API key (run: aps-tools setup gamma)"}}
 	broken := &fakeConnector{name: "Delta", err: errors.New("site didn't answer")}
 
 	r, err := Run(context.Background(), []connectors.Connector{ok, missing, unset, broken}, " Alex@Example.com ", []string{"Later"})
@@ -64,6 +64,9 @@ func TestRunGathersResultsInOrder(t *testing.T) {
 		if r.Results[i].State != want {
 			t.Errorf("result %d (%s) = %v, want %v", i, r.Results[i].System, r.Results[i].State, want)
 		}
+	}
+	if d := strings.Join(r.Results[2].Details, " "); d != "Still needed: the owner's approval and an API key." {
+		t.Errorf("unconfigured details = %q", d)
 	}
 	if !strings.Contains(r.Results[2].Fix, "aps-tools setup gamma") {
 		t.Errorf("unconfigured system should say how to set it up, got %q", r.Results[2].Fix)

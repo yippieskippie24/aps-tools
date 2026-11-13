@@ -41,7 +41,7 @@ One installable terminal app (`aps-tools`) that:
 | System | What a member needs there | How the tool talks to it | Status |
 |---|---|---|---|
 | **Membership Google Sheet** | A row with "App vetted" marked (this is the master list) | Google Sheets API via a free service account, shared on the sheet as Editor, read-only scope until Phase 2 ([0009](decisions/0009-google-service-account.md)) | **Check built** ([setup](setup/google-sheet.md)) |
-| **Mailing list (Cloudflare)** | Their email is on the list **and** verified with Cloudflare | Cloudflare API (Email Routing + Worker), read-only token | **Verification check built**; list check after discovery ([setup](setup/cloudflare.md)) |
+| **Mailing list (Cloudflare)** | Their email is on the list **and** verified with Cloudflare | Cloudflare API (Email Routing + Worker), read-only token | **Check built**: verification and list membership; list check confirmed on a test account (November 2026) ([setup](setup/cloudflare.md)) |
 | **Jira Service Management** (free plan) | They are a customer on the APS service desk | Jira Cloud REST API with an API token | **Check built** ([setup](setup/jira.md)) |
 | **Discourse** (hosted by Discourse) | An active account (or a pending invite), optionally in a member group | User API key approved in the browser, read-only (admin API keys need a Pro plan — [0008](decisions/0008-discourse-user-api-key.md)) | **Check built and connected** to the real forum ([setup](setup/discourse.md)) |
 | **Welcome email** | They receive instructions on what to do next | Generated HTML "copy page"; sent by hand from the webmaster's own mailbox | To build |
@@ -105,7 +105,7 @@ Progress: the check engine, `aps-tools check`, the "Check a member" screen, guid
 the full check is built: verification, all-members list (`LIST_NEWS`), and other lists. So is
 `cloudflare discover`, which counts undeliverable list members. It works on the test account
 now, and on the APS account after the December 2026 switch-over
-([decision 0007](decisions/0007-mailing-lists-in-worker-variables.md)). **Discourse**: the check and `discourse discover` are built and connected to the real forum. **Google Sheet**: the check and `sheet discover` are built. **Every Phase 1 system is now built**; what remains is connecting the sheet and trying the Cloudflare list check on the test account.
+([decision 0007](decisions/0007-mailing-lists-in-worker-variables.md)). **Discourse**: the check and `discourse discover` are built and connected to the real forum. **Google Sheet**: the check and `sheet discover` are built. **Every Phase 1 system is now built**; the Cloudflare list check has been confirmed against a test account running the list Worker. What remains is connecting the sheet, which is waiting on the owner's share approval.
 
 - Connectors for Google Sheet, Cloudflare, Jira, Discourse that can **look up** a member.
 - `aps-tools check <email>` and a TUI "Check a member" screen.

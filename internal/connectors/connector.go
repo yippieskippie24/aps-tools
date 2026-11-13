@@ -88,3 +88,19 @@ type MemberStatus struct {
 	// Fix tells the webmaster what to do next. Empty when nothing is needed.
 	Fix string
 }
+
+// JoinPlain joins items as "a, b and c", e.g. for listing what a
+// connector's Missing() says is still needed.
+func JoinPlain(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	}
+	s := items[0]
+	for _, it := range items[1 : len(items)-1] {
+		s += ", " + it
+	}
+	return s + " and " + items[len(items)-1]
+}

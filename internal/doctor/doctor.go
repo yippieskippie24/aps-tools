@@ -188,7 +188,7 @@ func testOne(ctx context.Context, c connectors.Connector) Result {
 		return Result{
 			Name: c.Name(), Status: Warn,
 			Detail: "Not set up yet.",
-			Fix:    "Still needed: " + joinPlain(missing),
+			Fix:    "Still needed: " + connectors.JoinPlain(missing),
 		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, connectionTimeout)
@@ -197,21 +197,6 @@ func testOne(ctx context.Context, c connectors.Connector) Result {
 		return Result{Name: c.Name(), Status: Fail, Detail: err.Error()}
 	}
 	return Result{Name: c.Name(), Status: OK, Detail: "Connected."}
-}
-
-// joinPlain joins items as "a, b and c".
-func joinPlain(items []string) string {
-	switch len(items) {
-	case 0:
-		return ""
-	case 1:
-		return items[0]
-	}
-	s := items[0]
-	for _, it := range items[1 : len(items)-1] {
-		s += ", " + it
-	}
-	return s + " and " + items[len(items)-1]
 }
 
 // Worst returns the most serious status among the results (OK if empty).
