@@ -65,8 +65,13 @@ func (c *Connector) Name() string { return "Membership Google Sheet" }
 // Missing implements connectors.Connector.
 func (c *Connector) Missing() []string {
 	var m []string
-	if c.cfg.SpreadsheetID == "" || c.cfg.Tab == "" {
+	switch {
+	case c.cfg.SpreadsheetID == "":
 		m = append(m, "which sheet and tab list the members")
+	case c.cfg.AccessRequested:
+		m = append(m, "the sheet owner's approval of your request to share it with "+c.cfg.ServiceAccount+", then choosing the member tab")
+	case c.cfg.Tab == "":
+		m = append(m, "which tab lists the members")
 	}
 	if c.client == nil {
 		if c.keyErr != nil && !errors.Is(c.keyErr, secrets.ErrNotFound) {

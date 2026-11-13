@@ -20,7 +20,10 @@ import (
 
 // setupSheet is the guided setup for the membership Google Sheet
 // (`aps-tools setup sheet`). Guide: docs/setup/google-sheet.md.
-// Nothing is saved unless the sheet can be read first.
+// Nothing is saved unless it has been tested first. If the sheet's owner
+// still has to approve sharing it with the tool, the webmaster can save
+// their progress (the key, which Google has accepted, and the sheet's ID)
+// and finish once it's approved.
 func setupSheet(ctx context.Context, out io.Writer) error {
 	if err := requireTerminal(); err != nil {
 		return err
@@ -60,7 +63,7 @@ func setupSheet(ctx context.Context, out io.Writer) error {
 			Title("Connect the membership Google Sheet").
 			Description("The tool reads the sheet as a Google \"service account\", a robot\n"+
 				"account the sheet is shared with. Step-by-step guide:\ndocs/setup/google-sheet.md\n\n"+
-				"Nothing is saved until the sheet has been read successfully."),
+				"Nothing is saved until it has been tested."+pendingNote(cfg.Sheet)),
 		huh.NewInput().
 			Title("Link to the membership sheet").
 			Description("Open the sheet in your browser and copy the address bar.").
@@ -121,10 +124,36 @@ func setupSheet(ctx context.Context, out io.Writer) error {
 	id := sheet.SpreadsheetID(link)
 	client := sheet.NewClient(key)
 
-	// 1. Make sure the sheet is shared with the robot, then read it.
+	// saveKey stores a new key (or its 1Password reference) in cfg/the store.
+	saveKey := func() (string, error) {
+		switch {
+		case keyRef != "":
+			cfg.Secrets.GoogleServiceAccountKeyRef = keyRef
+			return "key: 1Password (" + keyRef + ")", nil
+		case newKey:
+			return saveGeneratedSecret(ctx, out, cfg, generatedSecret{
+				key:      secrets.GoogleServiceAccountKey,
+				value:    key.Compact(),
+				itemName: "APS Google Sheet key (aps-tools)",
+				warning:  "It's the key file's contents, squeezed onto one line.",
+				rerun:    rerun,
+				explain:  sheet.ExplainStoredKey,
+			})
+		}
+		return "key: unchanged", nil
+	}
+
+	// 1. Prove the key itself works, before worrying about sharing.
+	lipgloss.Fprintln(out, dimStyle.Render("Signing in to Google as "+key.ClientEmail+"…"))
+	if err := client.SignIn(ctx); err != nil {
+		return failed(out, err.Error(), rerun)
+	}
+	lipgloss.Fprintln(out, okStyle.Render("✓ ")+"Google accepted the key.")
+
+	// 2. Make sure the sheet is shared with the robot, then read it.
 	var book sheet.Spreadsheet
 	for {
-		lipgloss.Fprintln(out, dimStyle.Render("Reading the sheet as "+key.ClientEmail+"…"))
+		lipgloss.Fprintln(out, dimStyle.Render("Reading the sheet…"))
 		book, err = client.GetSpreadsheet(ctx, id)
 		if err == nil {
 			break
@@ -137,16 +166,47 @@ func setupSheet(ctx context.Context, out io.Writer) error {
 		lipgloss.Fprintln(out, "  2. Paste "+boldStyle.Render(key.ClientEmail)+", set it to "+boldStyle.Render("Editor")+",")
 		lipgloss.Fprintln(out, "     untick \"Notify people\" (it's a robot), and click Share.")
 		lipgloss.Fprintln(out, dimStyle.Render("  Editor is for writing back setup status in a later version. For now the tool only reads."))
-		lipgloss.Fprintln(out, dimStyle.Render("  Can't share it yourself? Google sends the owner a request. Stop here and run setup again once it's approved."))
-		again := true
-		retry := huh.NewForm(huh.NewGroup(huh.NewConfirm().
-			Title("Try reading the sheet again?").
-			Affirmative("Yes, I've shared it").
-			Negative("Stop").
-			Value(&again))).WithTheme(formTheme)
-		if err := retry.RunWithContext(ctx); err != nil || !again {
+		lipgloss.Fprintln(out, dimStyle.Render("  Can't share it yourself? Google sends the owner a request to approve."))
+		lipgloss.Fprintln(out)
+
+		next := "retry"
+		ask := huh.NewForm(huh.NewGroup(huh.NewSelect[string]().
+			Title("What now?").
+			Options(
+				huh.NewOption("It's shared (or the owner approved): try again", "retry"),
+				huh.NewOption("I've requested access: save my progress and finish once it's approved", "later"),
+				huh.NewOption("Stop without saving anything", "stop"),
+			).
+			Value(&next))).WithTheme(formTheme)
+		if err := ask.RunWithContext(ctx); err != nil {
+			return cancelled(err)
+		}
+		switch next {
+		case "stop":
 			lipgloss.Fprintln(out, dimStyle.Render("Nothing was saved. Run again when it's shared: "+rerun))
 			return errSilent
+		case "later":
+			// Save what's been proven to work (the key, the sheet's ID) and
+			// remember that a share is waiting on the owner.
+			where, err := saveKey()
+			if err != nil {
+				return err
+			}
+			cfg.Sheet = config.Sheet{
+				SpreadsheetID:   id,
+				Tab:             keepIfSameSheet(cfg.Sheet, id),
+				ServiceAccount:  key.ClientEmail,
+				AccessRequested: true,
+			}
+			if err := config.Save(cfg); err != nil {
+				return err
+			}
+			lipgloss.Fprintln(out, okStyle.Render("✓ ")+"Progress saved"+dimStyle.Render("  ·  "+where))
+			offerToDeleteDownload(ctx, out, newKey && keyRef == "", keyPath)
+			lipgloss.Fprintln(out)
+			lipgloss.Fprintln(out, "Once the owner approves, finish with:  "+boldStyle.Render(rerun))
+			lipgloss.Fprintln(out, dimStyle.Render("The link and key are remembered: press Enter twice, then pick the tab."))
+			return nil
 		}
 	}
 	lipgloss.Fprintln(out, okStyle.Render("✓ ")+"Can read "+boldStyle.Render(book.Title)+".")
@@ -192,21 +252,9 @@ func setupSheet(ctx context.Context, out io.Writer) error {
 	}
 
 	// 3. Save — everything has been tested.
-	where := "key: unchanged"
-	if keyRef != "" {
-		cfg.Secrets.GoogleServiceAccountKeyRef = keyRef
-		where = "key: 1Password (" + keyRef + ")"
-	} else if newKey {
-		if where, err = saveGeneratedSecret(ctx, out, cfg, generatedSecret{
-			key:      secrets.GoogleServiceAccountKey,
-			value:    key.Compact(),
-			itemName: "APS Google Sheet key (aps-tools)",
-			warning:  "It's the key file's contents, squeezed onto one line.",
-			rerun:    rerun,
-			explain:  sheet.ExplainStoredKey,
-		}); err != nil {
-			return err
-		}
+	where, err := saveKey()
+	if err != nil {
+		return err
 	}
 	cfg.Sheet = config.Sheet{
 		SpreadsheetID:    id,
@@ -219,26 +267,49 @@ func setupSheet(ctx context.Context, out io.Writer) error {
 	}
 	path, _ := config.Path()
 	lipgloss.Fprintln(out, okStyle.Render("✓ ")+"Saved. Settings: "+path+dimStyle.Render("  ·  "+where))
-
-	// 4. The downloaded file is a copy of the key lying around in Downloads.
-	if newKey && keyRef == "" {
-		file := sheet.CleanPath(keyPath)
-		del := true
-		ask := huh.NewForm(huh.NewGroup(huh.NewConfirm().
-			Title("Delete the downloaded key file?").
-			Description(file + "\nThe key is saved now, so this copy isn't needed. Recommended.").
-			Affirmative("Delete it").
-			Negative("Keep it").
-			Value(&del))).WithTheme(formTheme)
-		if err := ask.RunWithContext(ctx); err == nil && del {
-			if err := os.Remove(file); err != nil {
-				lipgloss.Fprintln(out, warnStyle.Render("! ")+"Couldn't delete it ("+err.Error()+"). Delete it yourself.")
-			} else {
-				lipgloss.Fprintln(out, okStyle.Render("✓ ")+"Deleted the downloaded copy.")
-			}
-		}
-	}
+	offerToDeleteDownload(ctx, out, newKey && keyRef == "", keyPath)
 	lipgloss.Fprintln(out)
 	lipgloss.Fprintln(out, "Next, see what the tool found in the sheet:  "+boldStyle.Render("aps-tools sheet discover"))
 	return nil
+}
+
+// keepIfSameSheet keeps the saved tab when setup is re-run for the same
+// spreadsheet, so a pending share doesn't forget the earlier choice.
+func keepIfSameSheet(saved config.Sheet, id string) string {
+	if saved.SpreadsheetID == id {
+		return saved.Tab
+	}
+	return ""
+}
+
+// offerToDeleteDownload asks to delete the downloaded key file once the key
+// is safely stored: the copy in Downloads would otherwise just lie around.
+func offerToDeleteDownload(ctx context.Context, out io.Writer, ask bool, keyPath string) {
+	if !ask {
+		return
+	}
+	file := sheet.CleanPath(keyPath)
+	del := true
+	form := huh.NewForm(huh.NewGroup(huh.NewConfirm().
+		Title("Delete the downloaded key file?").
+		Description(file + "\nThe key is saved now, so this copy isn't needed. Recommended.").
+		Affirmative("Delete it").
+		Negative("Keep it").
+		Value(&del))).WithTheme(formTheme)
+	if err := form.RunWithContext(ctx); err != nil || !del {
+		return
+	}
+	if err := os.Remove(file); err != nil {
+		lipgloss.Fprintln(out, warnStyle.Render("! ")+"Couldn't delete it ("+err.Error()+"). Delete it yourself.")
+		return
+	}
+	lipgloss.Fprintln(out, okStyle.Render("✓ ")+"Deleted the downloaded copy.")
+}
+
+// pendingNote reminds the webmaster when a share request was left waiting.
+func pendingNote(s config.Sheet) string {
+	if !s.AccessRequested {
+		return ""
+	}
+	return "\n\nLast time you requested access to the sheet. If the owner has\napproved it, this run finishes setup."
 }

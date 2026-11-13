@@ -105,15 +105,19 @@ aps-tools setup sheet
 
 1. Paste the **link to the sheet** from your browser's address bar.
 2. Give the **key file**. Setup suggests the newest key in Downloads. You can also drag the file
-   into the Terminal window. With 1Password, you can instead give the reference of the key file
-   attached in 1Password (see above).
+   into the Terminal window. With 1Password, you can instead give the `op://` reference of a key
+   you've already stored there, pasted as text or attached as a file (see above).
 3. Setup tries to read the sheet. The first time, it can't, because the sheet isn't shared yet. It
    then puts the robot's email on your clipboard and asks you to:
    - open the sheet → **Share**;
    - paste the robot's email and set it to **Editor**;
    - untick **Notify people**, then **Share**.
 
-   Then choose **Yes, I've shared it**. If you can't share the sheet, ask its owner to.
+   Then pick one:
+   - **It's shared: try again.** Use this when you could share it yourself.
+   - **I've requested access: save my progress.** Use this when the owner has to approve it. Finish
+     later by running setup again.
+   - **Stop without saving anything.**
 4. Pick the **tab** that lists the members. The sheet has several tabs. Setup suggests the newest
    one with "member" in its name, e.g. "Member Directory May 2026". Setup then shows which column
    it found for each thing.
@@ -170,9 +174,11 @@ What the tool can actually do is limited separately. When it signs in, it asks G
 share would allow it. Phase 2 will switch that to read-write, which needs no new key and no new
 approval.
 
-**If the owner must approve the share:** run setup up to the sharing step, and when it says it
-can't read the sheet, choose **Stop**. Nothing is saved. Once the owner approves, run
-`aps-tools setup sheet` again.
+**If the owner must approve the share:** when setup says it can't read the sheet yet, choose
+**"I've requested access: save my progress"**. Setup saves the key (Google has already accepted it)
+and the sheet's link, and notes that a share is waiting. Until it's approved, `aps-tools doctor`
+and member checks say the sheet is waiting for the owner's approval. Once it's approved, run
+`aps-tools setup sheet` again: press Enter twice (link and key are remembered), then pick the tab.
 
 ## What's stored where
 

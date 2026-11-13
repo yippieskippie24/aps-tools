@@ -62,6 +62,11 @@ type Sheet struct {
 	// ServiceAccount is the email address of the Google service account the
 	// tool reads as. The sheet must be shared with it. Not a secret.
 	ServiceAccount string `toml:"service_account"`
+	// AccessRequested is true while a request to share the sheet with the
+	// service account is waiting for the sheet owner's approval. Setup sets
+	// it when you choose "I've requested access", and clears it once the
+	// sheet can be read.
+	AccessRequested bool `toml:"access_requested"`
 }
 
 // Discourse holds the settings for the APS Discourse forum.

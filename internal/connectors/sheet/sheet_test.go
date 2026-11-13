@@ -333,3 +333,19 @@ func TestTabs(t *testing.T) {
 		t.Errorf("different list names must not match, got %q", got)
 	}
 }
+
+func TestMissingWhileShareRequested(t *testing.T) {
+	file, _ := testKey(t)
+	k, _ := ParseServiceAccountKey(file)
+	store := secrets.NewMemory()
+	store.Set(secrets.GoogleServiceAccountKey, k.Compact())
+	cfg := config.Sheet{SpreadsheetID: "sheet-1", ServiceAccount: k.ClientEmail, AccessRequested: true}
+	m := New(cfg, store).Missing()
+	if len(m) != 1 || !strings.Contains(m[0], "owner's approval") || !strings.Contains(m[0], k.ClientEmail) || !strings.Contains(m[0], "aps-tools setup sheet") {
+		t.Errorf("Missing() = %v", m)
+	}
+	cfg.AccessRequested, cfg.Tab = false, "Members"
+	if m := New(cfg, store).Missing(); len(m) != 0 {
+		t.Errorf("approved and tab chosen, Missing() = %v", m)
+	}
+}

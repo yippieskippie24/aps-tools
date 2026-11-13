@@ -34,6 +34,12 @@ func NewClient(key ServiceAccountKey) *Client {
 	return &Client{key: key, tokens: newTokenSource(key, hc), baseURL: defaultSheetsURL, httpClient: hc}
 }
 
+// SignIn checks that Google accepts the key, without touching any sheet.
+func (c *Client) SignIn(ctx context.Context) error {
+	_, err := c.tokens.Token(ctx)
+	return err
+}
+
 // ServiceAccount is the robot's email address (share the sheet with it).
 func (c *Client) ServiceAccount() string { return c.key.ClientEmail }
 

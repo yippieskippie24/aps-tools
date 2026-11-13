@@ -86,6 +86,9 @@ tab = {{ q .Sheet.Tab }}
 # address as an Editor, or the tool can't see it. (Editor is for writing back
 # setup status in a later version; the tool currently only reads.)
 service_account = {{ q .Sheet.ServiceAccount }}
+# true while your request to share the sheet with the tool is waiting for the
+# owner's approval. "aps-tools setup sheet" sets and clears it.
+access_requested = {{ .Sheet.AccessRequested }}
 `
 
 var tmpl = template.Must(template.New("config").Funcs(template.FuncMap{"q": tomlString}).Parse(fileTemplate))
