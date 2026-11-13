@@ -43,7 +43,7 @@ One installable terminal app (`aps-tools`) that:
 | **Membership Google Sheet** | A row (this is the master list) | Google Sheets API via a free service account | To build |
 | **Mailing list (Cloudflare)** | Their email is on the list **and** verified with Cloudflare | Cloudflare API (Email Routing + Worker), read-only token | **Verification check built**; list check after discovery ([setup](setup/cloudflare.md)) |
 | **Jira Service Management** (free plan) | They are a customer on the APS service desk | Jira Cloud REST API with an API token | **Check built** ([setup](setup/jira.md)) |
-| **Discourse** (hosted by Discourse) | An active account (or a pending invite), optionally in a member group | Discourse API key (single user, Read-only) | **Check built** ([setup](setup/discourse.md)) |
+| **Discourse** (hosted by Discourse) | An active account (or a pending invite), optionally in a member group | User API key approved in the browser, read-only (admin API keys need a Pro plan — [0008](decisions/0008-discourse-user-api-key.md)) | **Check built and connected** to the real forum ([setup](setup/discourse.md)) |
 | **Welcome email** | They receive instructions on what to do next | Generated HTML "copy page"; sent by hand from the webmaster's own mailbox | To build |
 | ~~Squarespace website~~ | — | — | **Out of scope.** Being retired Dec 2026; the new site has no user accounts. |
 
@@ -60,10 +60,16 @@ KV store, or elsewhere) is **still to be investigated** once API access is set u
 *customers*. Members are customers, so they never use up a seat. The API token belongs to
 the webmaster's own Atlassian account; a new webmaster creates their own.
 
-**Discourse.** Hosted by Discourse; the webmaster is the admin. The exact sign-up configuration
-(invite-only? approval required? groups? single sign-on?) is **still to be investigated**. The
-plan is to build a read-only `aps-tools discourse discover` command first, so the setup is visible to
-anyone, then design the onboarding step around what is actually configured.
+**Discourse.** Hosted by Discourse on the **Starter** plan; the webmaster is the admin. Starter has
+no admin API keys, so the tool uses a user API key approved in the browser
+([decision 0008](decisions/0008-discourse-user-api-key.md)). Confirmed with `aps-tools discourse
+discover` (November 2026):
+- **invite-only**: onboarding means sending a forum invite;
+- **private**: people must log in to read;
+- **no admin approval** of new accounts;
+- **email + password** logins only (no single sign-on);
+- invites expire after **90 days**;
+- the only custom group is for the board, so there's **no member group** to check.
 
 **Google Sheet.** The master membership list. The tool reads it to find members and writes back
 setup status so other board members can see who is fully set up. To avoid disturbing columns
@@ -95,7 +101,7 @@ Progress: the check engine, `aps-tools check`, the "Check a member" screen, guid
 the full check is built: verification, all-members list (`LIST_NEWS`), and other lists. So is
 `cloudflare discover`, which counts undeliverable list members. It works on the test account
 now, and on the APS account after the December 2026 switch-over
-([decision 0007](decisions/0007-mailing-lists-in-worker-variables.md)). **Discourse**: the check and `discourse discover` are built. **Google Sheet is the last Phase 1 system.**
+([decision 0007](decisions/0007-mailing-lists-in-worker-variables.md)). **Discourse**: the check and `discourse discover` are built and connected to the real forum. **Google Sheet is the last Phase 1 system.**
 
 - Connectors for Google Sheet, Cloudflare, Jira, Discourse that can **look up** a member.
 - `aps-tools check <email>` and a TUI "Check a member" screen.
@@ -143,7 +149,7 @@ now, and on the APS account after the December 2026 switch-over
 | # | Question | How we'll answer it |
 |---|---|---|
 | 1 | Where does the Cloudflare Worker keep the list of member addresses? | **Answered (2026-11-13):** there is no list Worker yet. APS email moves to Cloudflare in **December 2026**. Until then Email Routing is off, but members are already verifying their addresses. The list design (tested in a separate account) keeps each list in a Text variable `LIST_<NAME>` on one Worker; see [decision 0007](decisions/0007-mailing-lists-in-worker-variables.md). |
-| 2 | How is Discourse sign-up configured (invite-only, approval, groups, SSO)? | `aps-tools discourse discover` is built. Run it against the APS forum to answer this. |
+| 2 | How is Discourse sign-up configured (invite-only, approval, groups, SSO)? | **Answered:** invite-only, private, no approval, email logins, 90-day invites, no member group (see "Discourse" above). |
 | 3 | What are the Google Sheet's column headers, and which columns should the tool write? | Review headers (no member data needed). |
 | 4 | What should the welcome email say? | Write it together in Phase 2. |
 | 5 | ~~Which Jira service desk ID / customer setup is used?~~ | **Answered:** `aps-tools setup jira` lists the service desks and saves the chosen one. Confirmed on 2026-11-13 against the real APS service desk: known customers and a known non-customer were all reported correctly. |

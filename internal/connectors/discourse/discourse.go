@@ -5,9 +5,10 @@
 // not suspended, and — if a member group is configured — in that group.
 // Before they sign up, an outstanding invite counts as "waiting on member".
 //
-// How it authenticates: a Discourse API key created for the webmaster's own
-// admin username with the "Read-only" scope, so it can look but never change.
-// Setup guide: docs/setup/discourse.md.
+// How it authenticates: normally a "user API key" that the webmaster approves
+// in their browser with only the "read" scope (works on every Discourse plan),
+// or else an admin API key with the "Read-only" scope (Pro plans and higher).
+// Either way it can look but never change. Setup guide: docs/setup/discourse.md.
 package discourse
 
 import (
@@ -36,7 +37,16 @@ type Connector struct {
 // New builds the connector from saved settings and the secret store.
 func New(cfg config.Discourse, store secrets.Store) *Connector {
 	key, err := store.Get(secrets.DiscourseAPIKey)
-	return &Connector{cfg: cfg, client: NewClient(cfg.URL, cfg.Username, key), key: key, keyErr: err}
+	return &Connector{cfg: cfg, client: ClientFor(cfg, key), key: key, keyErr: err}
+}
+
+// ClientFor builds a client from saved settings, using whichever kind of
+// key setup stored (user or admin).
+func ClientFor(cfg config.Discourse, key string) *Client {
+	if cfg.UsesAdminKey() {
+		return NewClient(cfg.URL, cfg.Username, key)
+	}
+	return NewUserKeyClient(cfg.URL, cfg.Username, key, cfg.ClientID)
 }
 
 // ID implements connectors.Connector.
@@ -54,11 +64,13 @@ func (c *Connector) Missing() []string {
 	if c.cfg.Username == "" {
 		m = append(m, "your Discourse username")
 	}
-	if c.key == "" {
+	if !c.cfg.UsesAdminKey() && c.cfg.ClientID == "" {
+		m = append(m, "an approved forum key")
+	} else if c.key == "" {
 		if c.keyErr != nil && !errors.Is(c.keyErr, secrets.ErrNotFound) {
-			m = append(m, "a readable Discourse API key ("+c.keyErr.Error()+")")
+			m = append(m, "a readable Discourse key ("+c.keyErr.Error()+")")
 		} else {
-			m = append(m, "a Discourse API key")
+			m = append(m, "a Discourse key")
 		}
 	}
 	if len(m) > 0 {

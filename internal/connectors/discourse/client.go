@@ -15,23 +15,44 @@ import (
 // This file is the low-level conversation with a Discourse forum's API.
 // Every call is a read-only GET. API reference: https://docs.discourse.org
 
-// Client makes read-only calls to one Discourse forum with an admin API key.
+// Client makes read-only calls to one Discourse forum. It can use either
+// kind of Discourse key (see docs/decisions/0008-discourse-user-api-key.md):
+//   - a user API key, which the webmaster approves in the browser and which
+//     works on every Discourse plan (the normal choice), or
+//   - an admin API key, which only Pro and higher plans can create.
 type Client struct {
 	baseURL    string // e.g. "https://forum.example.org"
-	username   string // the API key's owner (Api-Username header)
+	username   string // the key's owner (needed for the invites page)
 	key        string
+	clientID   string // set only for user API keys
 	httpClient *http.Client
 }
 
-// NewClient creates a client. siteURL may be pasted with or without
-// https:// and with a trailing path; it is cleaned up.
+// NewClient creates a client that uses an ADMIN API key (Pro plans and
+// higher). siteURL may be pasted with or without https:// and with a
+// trailing path; it is cleaned up.
 func NewClient(siteURL, username, key string) *Client {
 	return &Client{
 		baseURL:    CleanURL(siteURL),
-		username:   strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(username), "@")),
+		username:   cleanUsername(username),
 		key:        strings.TrimSpace(key),
 		httpClient: &http.Client{Timeout: 20 * time.Second},
 	}
+}
+
+// NewUserKeyClient creates a client that uses a USER API key (any plan).
+// username may be empty during setup; Me fills it in.
+func NewUserKeyClient(siteURL, username, key, clientID string) *Client {
+	c := NewClient(siteURL, username, key)
+	c.clientID = strings.TrimSpace(clientID)
+	return c
+}
+
+// usesUserKey reports which headers to send.
+func (c *Client) usesUserKey() bool { return c.clientID != "" }
+
+func cleanUsername(s string) string {
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(s), "@"))
 }
 
 // CleanURL turns "forum.example.org/latest" into "https://forum.example.org".
@@ -60,8 +81,13 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 	if err != nil {
 		return fmt.Errorf("couldn't build a request for Discourse: %w", err)
 	}
-	req.Header.Set("Api-Key", c.key)
-	req.Header.Set("Api-Username", c.username)
+	if c.usesUserKey() {
+		req.Header.Set("User-Api-Key", c.key)
+		req.Header.Set("User-Api-Client-Id", c.clientID)
+	} else {
+		req.Header.Set("Api-Key", c.key)
+		req.Header.Set("Api-Username", c.username)
+	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -83,7 +109,7 @@ func explainStatus(code int, body []byte) error {
 	case code >= 200 && code < 300:
 		return nil
 	case code == http.StatusForbidden, code == http.StatusUnauthorized:
-		return errors.New("Discourse refused the API key — check it was made for your admin username with the \"Read-only\" scope (docs/setup/discourse.md), then run: aps-tools setup discourse")
+		return errors.New("Discourse refused the key — it may have been revoked or expired. Run: aps-tools setup discourse (guide: docs/setup/discourse.md)")
 	case code == http.StatusNotFound:
 		// Discourse answers 404 (not 403) for admin pages the key can't see.
 		return errors.New("Discourse couldn't find that — check the forum address, and that the API key belongs to an ADMIN account (run: aps-tools setup discourse)")
@@ -120,14 +146,31 @@ func (c *Client) GetProfile(ctx context.Context, username string) (Profile, erro
 	return r.User, err
 }
 
-// Me returns the API key owner's profile and checks they're an admin.
+// Me returns the key owner's profile and checks they're an admin.
+// With a user API key the forum says who the key belongs to, so the
+// client's username is filled in from the answer.
 func (c *Client) Me(ctx context.Context) (Profile, error) {
-	p, err := c.GetProfile(ctx, c.username)
-	if err != nil {
-		return p, err
+	var p Profile
+	if c.usesUserKey() {
+		var r struct {
+			CurrentUser *Profile `json:"current_user"`
+		}
+		if err := c.get(ctx, "/session/current.json", nil, &r); err != nil {
+			return p, err
+		}
+		if r.CurrentUser == nil {
+			return p, errors.New("Discourse didn't accept the key — run: aps-tools setup discourse")
+		}
+		p = *r.CurrentUser
+		c.username = p.Username
+	} else {
+		var err error
+		if p, err = c.GetProfile(ctx, c.username); err != nil {
+			return p, err
+		}
 	}
 	if !p.Admin {
-		return p, fmt.Errorf("%s isn't a forum admin — the API key must belong to an admin account", c.username)
+		return p, fmt.Errorf("@%s isn't a forum admin — the key must belong to an admin account (sign in to the forum as an admin when you approve it)", p.Username)
 	}
 	return p, nil
 }

@@ -50,10 +50,11 @@ TUI and the plain commands always behave the same.
 | `internal/tui/` | The interactive app. `app.go` is the main model and screen switching; `home.go` the menu; `checkscreen.go` "Check a member"; `screens.go` Test connections and Help; `styles.go` holds every colour. |
 | `internal/check/` | Checks one member against every connector at once and builds the report (also its plain-text copy). |
 | `internal/doctor/` | Checks the tool's own setup and every connector's connection. |
-| `internal/connectors/` | The `Connector` interface and member states (`connector.go`) and the registry (`registry.go`). Each system gets its own sub-folder, e.g. `jira/`, `cloudflare/`. `all/` switches every connector on, in display order. In `cloudflare/`, `lists.go` reads the mailing lists exactly as the list Worker does. Keep the two in step. |
+| `internal/connectors/` | The `Connector` interface and member states (`connector.go`) and the registry (`registry.go`). Each system gets its own sub-folder, e.g. `jira/`, `cloudflare/`. `all/` switches every connector on, in display order. In `cloudflare/`, `lists.go` reads the mailing lists exactly as the list Worker does. Keep the two in step. In `discourse/`, `userkey.go` does the approve-in-browser hand-shake for the forum key. |
 | `internal/config/` | Loads and saves `config.toml`. `template.go` is the file's layout with a comment on every setting; saving always goes through it, so comments are never lost. |
 | `internal/secrets/` | Where API keys come from: the macOS Keychain (`secrets.go`) or 1Password via the `op` tool (`onepassword.go`). All key names are defined in `secrets.go`. |
 | `internal/clipboard/` | Copies text to the Mac clipboard (used to copy reports). |
+| `internal/browser/` | Opens a web page in the default browser (used to approve the Discourse key). |
 | `internal/version/` | The version number, stamped in at release time. |
 | `docs/` | All documentation. |
 | `.github/workflows/` | CI (tests on every push) and releases (on version tags). |

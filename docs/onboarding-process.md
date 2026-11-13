@@ -32,10 +32,10 @@ any other group lists (`LIST_PHOTOS`, …) the same way. See [setup/cloudflare.m
 then enter the member's email. Customers do not use any of the 3 licensed agent seats.
 TBD — confirm whether customers are grouped into an organization.
 
-**4. Discourse.** On the forum, open your profile → **Invites** → **Invite**, enter their email,
-and add them to the member group if APS uses one. They'll get an email to create their account.
-If the forum requires approval, approve the new account under **Admin → Users** (or the Review
-queue). The exact sign-up settings are summarised by `aps-tools discourse discover`. See
+**4. Discourse.** The forum is **invite-only**, so every member needs an invite. On the forum,
+open your profile → **Invites** → **Invite** and enter their email. They'll get an email to create
+their account. Invites expire after 90 days; if one expires, send a new one. APS doesn't use a
+member group, and new accounts don't need approval. The exact sign-up settings are summarised by `aps-tools discourse discover`. See
 [setup/discourse.md](setup/discourse.md).
 
 **5. Welcome email.** TBD — the standard template will be written in Phase 2.

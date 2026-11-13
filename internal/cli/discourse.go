@@ -38,10 +38,10 @@ invites. Read-only: nothing is changed. No member names or emails are shown.`,
 			}
 			key, err := secrets.ForConfig(cfg).Get(secrets.DiscourseAPIKey)
 			if err != nil {
-				return fmt.Errorf("couldn't get the Discourse API key: %w (run: aps-tools setup discourse)", err)
+				return fmt.Errorf("couldn't get the Discourse key: %w (run: aps-tools setup discourse)", err)
 			}
 			lipgloss.Fprintln(out, dimStyle.Render("Looking at "+cfg.Discourse.URL+"… (read-only)"))
-			d, err := discourse.NewClient(cfg.Discourse.URL, cfg.Discourse.Username, key).Discover(cmd.Context())
+			d, err := discourse.ClientFor(cfg.Discourse, key).Discover(cmd.Context())
 			if err != nil {
 				return err
 			}

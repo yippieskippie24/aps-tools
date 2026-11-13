@@ -73,6 +73,11 @@ func (c *Client) Discover(ctx context.Context) (Discovery, error) {
 	}
 	for _, s := range signupSettings {
 		v, ok := settings[s.name]
+		if !ok {
+			// Hosted forums hide some settings (e.g. DiscourseConnect on
+			// plans that don't offer it); leave them out rather than show "—".
+			continue
+		}
 		d.Settings = append(d.Settings, SettingSummary{Name: s.name, Label: s.label, Value: v, Present: ok})
 	}
 	if settings["enable_local_logins"] == "true" {
@@ -132,12 +137,15 @@ func conclusions(d Discovery, s map[string]string) []string {
 	if d.PendingInvites > 0 {
 		notes = append(notes, fmt.Sprintf("You have %d invite(s) not yet accepted.", d.PendingInvites))
 	}
+	if d.ExpiredInvites > 0 {
+		notes = append(notes, fmt.Sprintf("%d of your invites expired before being accepted; those people may still need access (the member check shows who).", d.ExpiredInvites))
+	}
 	if len(d.Groups) > 0 {
 		var names []string
 		for _, g := range d.Groups {
 			names = append(names, g.Name)
 		}
-		notes = append(notes, "If every member should be in one of these groups ("+strings.Join(names, ", ")+"), choose it in `aps-tools setup discourse` and the check will confirm it.")
+		notes = append(notes, "Groups: "+strings.Join(names, ", ")+". Only if ALL members belong in one of them, choose it in `aps-tools setup discourse` so the check confirms it. Skip groups meant for only some people, such as a board group.")
 	}
 	return notes
 }

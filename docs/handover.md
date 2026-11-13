@@ -30,14 +30,15 @@ system; your job is to create keys and connect the tool.
 | Google Sheet (membership list) | Edit access to the sheet | A free Google Cloud service account, shared on the sheet | _Phase 1 — coming_ |
 | Cloudflare (APS email + mailing list) | Membership on the APS Cloudflare account | A read-only Cloudflare API token | [docs/setup/cloudflare.md](setup/cloudflare.md) |
 | Jira Service Management | An agent seat on the APS Jira site (free plan = 3 seats) | An Atlassian API token from your own account | [docs/setup/jira.md](setup/jira.md) |
-| Discourse | Admin on the APS Discourse site | A read-only Discourse API key for your own admin user | [docs/setup/discourse.md](setup/discourse.md) |
+| Discourse | Admin on the APS Discourse site | A read-only key you approve in your browser during setup | [docs/setup/discourse.md](setup/discourse.md) |
 | GitHub (this tool's code) | Optional: maintainer access to the repo | Nothing, unless you want to change the tool | [development.md](development.md) |
 
 **Outgoing webmaster checklist** (do this before you leave):
 
 - [ ] Give the new webmaster admin/agent access on every system above.
 - [ ] Walk through one onboarding together using the tool.
-- [ ] Revoke **your own** API keys (Cloudflare, Atlassian, Discourse, Google service account key).
+- [ ] Revoke **your own** API keys (Cloudflare, Atlassian, Google service account key) and the
+      Discourse key ("aps-tools" under your forum profile → Preferences → authorized apps).
 - [ ] Remove your own admin access, or hand it to the board.
 - [ ] Make sure this page and [onboarding-process.md](onboarding-process.md) are current.
 

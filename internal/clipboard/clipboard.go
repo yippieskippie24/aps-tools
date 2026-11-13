@@ -14,3 +14,6 @@ func Copy(text string) error {
 	cmd.Stdin = strings.NewReader(text)
 	return cmd.Run()
 }
+
+// Clear empties the clipboard, so a key copied for a moment doesn't linger.
+func Clear() error { return Copy("") }

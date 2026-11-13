@@ -62,11 +62,17 @@ members_list = {{ q .Cloudflare.MembersList }}
 [discourse]
 # The forum's address, e.g. "https://forum.example.org".
 url = {{ q .Discourse.URL }}
-# YOUR Discourse username — the admin account the API key belongs to.
+# YOUR Discourse username — the admin account the key belongs to.
 username = {{ q .Discourse.Username }}
 # The group every member should be in, e.g. "members". Leave empty to skip
 # the group check. "aps-tools setup discourse" lets you pick it.
 member_group = {{ q .Discourse.MemberGroup }}
+# Which kind of key the tool uses: "user" (approved in your browser — works
+# on every Discourse plan) or "admin" (an admin API key — Pro plans only).
+key_type = {{ q .Discourse.KeyType }}
+# Identifies this computer's copy of the tool to the forum (user keys only).
+# Not a secret. "aps-tools setup discourse" fills it in.
+client_id = {{ q .Discourse.ClientID }}
 
 # A section for the Google Sheet will appear here once it's added.
 `

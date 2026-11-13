@@ -51,11 +51,28 @@ type Config struct {
 type Discourse struct {
 	// URL is the forum's address, e.g. "https://forum.example.org".
 	URL string `toml:"url"`
-	// Username is the webmaster's own Discourse username (the API key's owner).
+	// Username is the webmaster's own Discourse username (the key's owner).
 	Username string `toml:"username"`
 	// MemberGroup is the group every member should be in. Empty = don't check.
 	MemberGroup string `toml:"member_group"`
+	// KeyType says which kind of key is stored: "user" (approved in the
+	// browser; works on every Discourse plan) or "admin" (an admin API key,
+	// Pro plans and higher). Empty means "user".
+	KeyType string `toml:"key_type"`
+	// ClientID names this computer's copy of the tool to the forum when a
+	// user key is used. Not a secret: it's useless without the key.
+	ClientID string `toml:"client_id"`
 }
+
+// Discourse key types; see Discourse.KeyType.
+const (
+	DiscourseUserKey  = "user"
+	DiscourseAdminKey = "admin"
+)
+
+// UsesAdminKey reports whether an admin API key (rather than a user API
+// key) is stored for the forum.
+func (d Discourse) UsesAdminKey() bool { return d.KeyType == DiscourseAdminKey }
 
 // Cloudflare holds the settings for Cloudflare Email Routing.
 type Cloudflare struct {

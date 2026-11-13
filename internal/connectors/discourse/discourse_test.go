@@ -14,15 +14,22 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/secrets"
 )
 
-// fakeForum serves canned answers by path (query ignored unless the key
-// includes it) and checks every request is a read-only GET with the key.
-func fakeForum(t *testing.T, routes map[string]string) *Client {
+// fakeForumURL serves canned answers by path (query ignored unless the key
+// includes it) and checks every request is a read-only GET with a valid
+// key: either an admin key (Api-Key + Api-Username) or a user key
+// (User-Api-Key + User-Api-Client-Id), never both.
+func fakeForumURL(t *testing.T, routes map[string]string) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Errorf("made a %s request — the connector must be read-only", r.Method)
 		}
-		if r.Header.Get("Api-Key") != "test-key" || r.Header.Get("Api-Username") != "webmaster" {
+		admin := r.Header.Get("Api-Key") == "test-key" && r.Header.Get("Api-Username") == "webmaster"
+		user := r.Header.Get("User-Api-Key") == "test-key" && r.Header.Get("User-Api-Client-Id") == "client-1"
+		if r.Header.Get("Api-Key") != "" && r.Header.Get("User-Api-Key") != "" {
+			t.Error("sent both kinds of key headers")
+		}
+		if !admin && !user {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
@@ -40,8 +47,15 @@ func fakeForum(t *testing.T, routes map[string]string) *Client {
 		w.Write([]byte(body))
 	}))
 	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// fakeForum returns an admin-key client talking to a fake forum.
+func fakeForum(t *testing.T, routes map[string]string) *Client {
+	t.Helper()
+	url := fakeForumURL(t, routes)
 	c := NewClient("forum.example.org", "@webmaster", "test-key")
-	c.baseURL = srv.URL
+	c.baseURL = url
 	return c
 }
 
@@ -113,7 +127,7 @@ func TestMeRequiresAdmin(t *testing.T) {
 func TestBadKeyIsExplained(t *testing.T) {
 	c := fakeForum(t, nil)
 	c.key = "wrong"
-	if _, err := c.Me(context.Background()); err == nil || !strings.Contains(err.Error(), "Read-only") {
+	if _, err := c.Me(context.Background()); err == nil || !strings.Contains(err.Error(), "revoked") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -127,7 +141,7 @@ func TestDiscover(t *testing.T) {
 			{"setting":"enable_google_oauth2_logins","value":true},{"setting":"invite_expiry_days","value":90}]}`,
 		"/groups.json": `{"groups":[{"name":"members","user_count":30},{"name":"trust_level_0","automatic":true,"user_count":40}],"total_rows_groups":2}`,
 		"/u/webmaster/invited.json?filter=pending": `{"invites":[{"email":"a@example.com"},{"email":"b@example.com"}]}`,
-		"/u/webmaster/invited.json?filter=expired": `{"invites":[]}`,
+		"/u/webmaster/invited.json?filter=expired": `{"invites":[{"email":"c@example.com"}]}`,
 	})
 	d, err := c.Discover(context.Background())
 	if err != nil {
@@ -140,9 +154,14 @@ func TestDiscover(t *testing.T) {
 		t.Errorf("login methods = %v", d.LoginMethods)
 	}
 	notes := strings.Join(d.Notes, "\n")
-	for _, want := range []string{"invite-only", "private", "2 invite(s)", "members"} {
+	for _, want := range []string{"invite-only", "private", "2 invite(s)", "1 of your invites expired", "members"} {
 		if !strings.Contains(notes, want) {
 			t.Errorf("notes missing %q:\n%s", want, notes)
+		}
+	}
+	for _, st := range d.Settings {
+		if st.Name == "enable_discourse_connect" {
+			t.Error("a setting the forum didn't return should be left out, not shown as —")
 		}
 	}
 	if strings.Contains(notes, "a@example.com") {
@@ -166,5 +185,49 @@ func TestMissing(t *testing.T) {
 	m := New(config.Discourse{}, secrets.NewMemory()).Missing()
 	if len(m) != 3 || !strings.Contains(m[2], "aps-tools setup discourse") {
 		t.Errorf("Missing() = %v", m)
+	}
+	store := secrets.NewMemory()
+	store.Set(secrets.DiscourseAPIKey, "k")
+	ok := config.Discourse{URL: "https://forum.example.org", Username: "webmaster", ClientID: "c"}
+	if m := New(ok, store).Missing(); len(m) != 0 {
+		t.Errorf("user key set up, Missing() = %v", m)
+	}
+	ok.ClientID = ""
+	if m := New(ok, store).Missing(); len(m) != 1 {
+		t.Errorf("user key without client ID should need setup, Missing() = %v", m)
+	}
+	ok.KeyType = config.DiscourseAdminKey
+	if m := New(ok, store).Missing(); len(m) != 0 {
+		t.Errorf("admin key set up, Missing() = %v", m)
+	}
+}
+
+// A user key: the forum says who owns it, and later calls use that name.
+func TestUserKeyClient(t *testing.T) {
+	url := fakeForumURL(t, map[string]string{
+		"/session/current.json":                    `{"current_user":{"username":"webmaster","admin":true}}`,
+		"/u/webmaster/invited.json?filter=pending": `{"invites":[{"email":"a@example.com"}]}`,
+	})
+	cfg := config.Discourse{URL: url, ClientID: "client-1"}
+	c := ClientFor(cfg, "test-key")
+	c.baseURL = url
+	me, err := c.Me(context.Background())
+	if err != nil || me.Username != "webmaster" {
+		t.Fatalf("Me = %+v, %v", me, err)
+	}
+	inv, err := c.Invites(context.Background(), "pending", "")
+	if err != nil || len(inv) != 1 {
+		t.Errorf("Invites = %v, %v", inv, err)
+	}
+}
+
+func TestUserKeyNotAdmin(t *testing.T) {
+	url := fakeForumURL(t, map[string]string{
+		"/session/current.json": `{"current_user":{"username":"someone","admin":false}}`,
+	})
+	c := NewUserKeyClient(url, "", "test-key", "client-1")
+	c.baseURL = url
+	if _, err := c.Me(context.Background()); err == nil || !strings.Contains(err.Error(), "@someone isn't a forum admin") {
+		t.Errorf("err = %v", err)
 	}
 }
