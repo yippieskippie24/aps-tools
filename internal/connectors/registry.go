@@ -31,5 +31,5 @@ func All(cfg *config.Config, store secrets.Store) []Connector {
 // so a report never looks complete when it isn't. Remove a system from this
 // list when its connector is registered.
 func NotYetBuilt() []string {
-	return []string{"Membership Google Sheet"}
+	return nil // every Phase 1 system is built
 }

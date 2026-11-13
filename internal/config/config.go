@@ -45,6 +45,23 @@ type Config struct {
 	// Discourse holds the settings for the APS forum.
 	// See docs/setup/discourse.md.
 	Discourse Discourse `toml:"discourse"`
+	// Sheet holds the settings for the membership Google Sheet.
+	// See docs/setup/google-sheet.md.
+	Sheet Sheet `toml:"google_sheet"`
+}
+
+// Sheet holds the settings for the APS membership Google Sheet.
+type Sheet struct {
+	// SpreadsheetID is the long ID in the sheet's link
+	// (docs.google.com/spreadsheets/d/<ID>/edit).
+	SpreadsheetID string `toml:"spreadsheet_id"`
+	// SpreadsheetTitle is the sheet's name, for display only.
+	SpreadsheetTitle string `toml:"spreadsheet_title"`
+	// Tab is the name of the tab (worksheet) that lists members.
+	Tab string `toml:"tab"`
+	// ServiceAccount is the email address of the Google service account the
+	// tool reads as. The sheet must be shared with it. Not a secret.
+	ServiceAccount string `toml:"service_account"`
 }
 
 // Discourse holds the settings for the APS Discourse forum.
@@ -119,6 +136,9 @@ type Secrets struct {
 	// DiscourseAPIKeyRef is the 1Password secret reference for the
 	// Discourse API key. Only used when Store is "1password".
 	DiscourseAPIKeyRef string `toml:"discourse_api_key_ref"`
+	// GoogleServiceAccountKeyRef is the 1Password secret reference for the
+	// Google service account key. Only used when Store is "1password".
+	GoogleServiceAccountKeyRef string `toml:"google_service_account_key_ref"`
 }
 
 // UsesOnePassword reports whether keys should be read from 1Password.

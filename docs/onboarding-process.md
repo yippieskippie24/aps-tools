@@ -11,7 +11,7 @@ _Steps marked **TBD** will be filled in as each system is investigated._
 
 | # | Step | System | What the member must do afterwards |
 |---|---|---|---|
-| 1 | Confirm the member is on the membership Google Sheet | Google Sheets | — |
+| 1 | Confirm the member is on the membership Google Sheet **with "App vetted" = Y** | Google Sheets | — |
 | 2 | Add their email to the APS mailing list | Cloudflare | **Click the verification email from Cloudflare.** Until they do, they receive no list mail. |
 | 3 | Add them as a customer on the APS service desk | Jira Service Management | TBD — possibly accept an invite / set a password |
 | 4 | Invite them to the APS Discourse forum | Discourse | Accept the invite and create their account |
@@ -19,6 +19,11 @@ _Steps marked **TBD** will be filled in as each system is investigated._
 | 6 | Record that setup is complete on the Google Sheet | Google Sheets | — |
 
 ### Step details
+
+**1. Membership sheet.** The membership chair adds each applicant to the sheet and marks **New**
+while their application and background check are in progress. When everything is complete the chair
+marks **App vetted** = **Y**. **Don't start steps 2–5 until App vetted is Y.** `aps-tools check`
+shows this as "Waiting on member" until then. See [setup/google-sheet.md](setup/google-sheet.md).
 
 **2. Mailing list (Cloudflare).** APS email uses Cloudflare Email Routing with a Worker that
 forwards list mail to members. In the Cloudflare dashboard: the APS domain → **Email** →
@@ -42,7 +47,7 @@ member group, and new accounts don't need approval. The exact sign-up settings a
 
 ## "Am I set up correctly?" — checking a member by hand
 
-1. Search the Google Sheet for their email.
+1. Search the Google Sheet for their email, and check **App vetted** is **Y**.
 2. Cloudflare: under **Destination addresses**, check their address is there **and shows as
    verified**. Then check it's in the list Worker's **`LIST_NEWS`** variable.
 3. Jira: search the service desk's **Customers** list for their email.

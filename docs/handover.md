@@ -27,7 +27,7 @@ system; your job is to create keys and connect the tool.
 
 | System | What you need from the outgoing webmaster | What the tool needs (you create this) | Setup guide |
 |---|---|---|---|
-| Google Sheet (membership list) | Edit access to the sheet | A free Google Cloud service account, shared on the sheet | _Phase 1 — coming_ |
+| Google Sheet (membership list) | Edit access to the sheet | A free Google Cloud service account, shared on the sheet | [docs/setup/google-sheet.md](setup/google-sheet.md) |
 | Cloudflare (APS email + mailing list) | Membership on the APS Cloudflare account | A read-only Cloudflare API token | [docs/setup/cloudflare.md](setup/cloudflare.md) |
 | Jira Service Management | An agent seat on the APS Jira site (free plan = 3 seats) | An Atlassian API token from your own account | [docs/setup/jira.md](setup/jira.md) |
 | Discourse | Admin on the APS Discourse site | A read-only key you approve in your browser during setup | [docs/setup/discourse.md](setup/discourse.md) |

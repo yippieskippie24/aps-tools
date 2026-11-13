@@ -38,6 +38,7 @@ store = {{ q .Secrets.Store }}
 jira_api_token_ref = {{ q .Secrets.JiraAPITokenRef }}
 cloudflare_api_token_ref = {{ q .Secrets.CloudflareAPITokenRef }}
 discourse_api_key_ref = {{ q .Secrets.DiscourseAPIKeyRef }}
+google_service_account_key_ref = {{ q .Secrets.GoogleServiceAccountKeyRef }}
 
 [jira]
 # Your Jira Cloud site address, without https:// — e.g. "example.atlassian.net".
@@ -74,7 +75,16 @@ key_type = {{ q .Discourse.KeyType }}
 # Not a secret. "aps-tools setup discourse" fills it in.
 client_id = {{ q .Discourse.ClientID }}
 
-# A section for the Google Sheet will appear here once it's added.
+[google_sheet]
+# The membership Google Sheet. "aps-tools setup sheet" fills these in.
+# spreadsheet_id is the long code in the sheet's link: .../spreadsheets/d/<ID>/edit
+spreadsheet_id = {{ q .Sheet.SpreadsheetID }}
+spreadsheet_title = {{ q .Sheet.SpreadsheetTitle }}
+# The tab (at the bottom of the sheet) that lists the members.
+tab = {{ q .Sheet.Tab }}
+# The Google "service account" the tool reads as. Share the sheet with this
+# address (Viewer is enough) or the tool can't see it.
+service_account = {{ q .Sheet.ServiceAccount }}
 `
 
 var tmpl = template.Must(template.New("config").Funcs(template.FuncMap{"q": tomlString}).Parse(fileTemplate))

@@ -188,7 +188,7 @@ func TestCheckScreenRunsAndShowsReport(t *testing.T) {
 	a = m.(App)
 
 	view := a.View().Content
-	for _, want := range []string{"alex@example.com", "Fake Desk", "Not set up", "Add them.", "Not checked by the tool yet"} {
+	for _, want := range []string{"alex@example.com", "Fake Desk", "Not set up", "Add them."} {
 		if !strings.Contains(view, want) {
 			t.Errorf("report screen is missing %q", want)
 		}

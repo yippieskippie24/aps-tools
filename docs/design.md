@@ -40,7 +40,7 @@ One installable terminal app (`aps-tools`) that:
 
 | System | What a member needs there | How the tool talks to it | Status |
 |---|---|---|---|
-| **Membership Google Sheet** | A row (this is the master list) | Google Sheets API via a free service account | To build |
+| **Membership Google Sheet** | A row with "App vetted" marked (this is the master list) | Google Sheets API via a free service account, shared on the sheet as Viewer ([0009](decisions/0009-google-service-account.md)) | **Check built** ([setup](setup/google-sheet.md)) |
 | **Mailing list (Cloudflare)** | Their email is on the list **and** verified with Cloudflare | Cloudflare API (Email Routing + Worker), read-only token | **Verification check built**; list check after discovery ([setup](setup/cloudflare.md)) |
 | **Jira Service Management** (free plan) | They are a customer on the APS service desk | Jira Cloud REST API with an API token | **Check built** ([setup](setup/jira.md)) |
 | **Discourse** (hosted by Discourse) | An active account (or a pending invite), optionally in a member group | User API key approved in the browser, read-only (admin API keys need a Pro plan — [0008](decisions/0008-discourse-user-api-key.md)) | **Check built and connected** to the real forum ([setup](setup/discourse.md)) |
@@ -71,10 +71,14 @@ discover` (November 2026):
 - invites expire after **90 days**;
 - the only custom group is for the board, so there's **no member group** to check.
 
-**Google Sheet.** The master membership list. The tool reads it to find members and writes back
-setup status so other board members can see who is fully set up. To avoid disturbing columns
-the board relies on, the tool will only write to columns it owns (exact layout **to be decided**
-once we look at the sheet's headers).
+**Google Sheet.** The master membership list, run by the membership chair. An applicant is added
+with **New** marked while their application and background check are in progress. The chair marks
+**App vetted** = Y when everything is complete, and only then should the webmaster set them up.
+The tool reads it as a Google service account
+([decision 0009](decisions/0009-google-service-account.md)) and finds columns by header text. It
+never shows the address or phone columns. In Phase 2 it will write back setup status so other
+board members can see who is fully set up, writing only to columns it owns (layout **to be
+decided**).
 
 **Welcome email.** The webmaster sends from a personal iCloud (custom domain) mailbox, which has no
 sending API. Instead of sending, the tool generates a local HTML page with **Copy To**,
@@ -101,7 +105,7 @@ Progress: the check engine, `aps-tools check`, the "Check a member" screen, guid
 the full check is built: verification, all-members list (`LIST_NEWS`), and other lists. So is
 `cloudflare discover`, which counts undeliverable list members. It works on the test account
 now, and on the APS account after the December 2026 switch-over
-([decision 0007](decisions/0007-mailing-lists-in-worker-variables.md)). **Discourse**: the check and `discourse discover` are built and connected to the real forum. **Google Sheet is the last Phase 1 system.**
+([decision 0007](decisions/0007-mailing-lists-in-worker-variables.md)). **Discourse**: the check and `discourse discover` are built and connected to the real forum. **Google Sheet**: the check and `sheet discover` are built. **Every Phase 1 system is now built**; what remains is connecting the sheet and trying the Cloudflare list check on the test account.
 
 - Connectors for Google Sheet, Cloudflare, Jira, Discourse that can **look up** a member.
 - `aps-tools check <email>` and a TUI "Check a member" screen.
@@ -150,7 +154,7 @@ now, and on the APS account after the December 2026 switch-over
 |---|---|---|
 | 1 | Where does the Cloudflare Worker keep the list of member addresses? | **Answered (2026-11-13):** there is no list Worker yet. APS email moves to Cloudflare in **December 2026**. Until then Email Routing is off, but members are already verifying their addresses. The list design (tested in a separate account) keeps each list in a Text variable `LIST_<NAME>` on one Worker; see [decision 0007](decisions/0007-mailing-lists-in-worker-variables.md). |
 | 2 | How is Discourse sign-up configured (invite-only, approval, groups, SSO)? | **Answered:** invite-only, private, no approval, email logins, 90-day invites, no member group (see "Discourse" above). |
-| 3 | What are the Google Sheet's column headers, and which columns should the tool write? | Review headers (no member data needed). |
+| 3 | What are the Google Sheet's column headers, and which columns should the tool write? | **Headers answered:** start/paid/due dates, Member Status (Active/Inactive), New, App vetted, names, email, address, phones. The membership chair marks "New" while an application is in progress and "App vetted" = Y when complete; that's the onboarding gate. **Still open:** which column(s) Phase 2 should write. |
 | 4 | What should the welcome email say? | Write it together in Phase 2. |
 | 5 | ~~Which Jira service desk ID / customer setup is used?~~ | **Answered:** `aps-tools setup jira` lists the service desks and saves the chosen one. Confirmed on 2026-11-13 against the real APS service desk: known customers and a known non-customer were all reported correctly. |
 

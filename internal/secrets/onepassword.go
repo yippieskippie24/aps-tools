@@ -27,9 +27,10 @@ func ForConfig(cfg *config.Config) Store {
 		return Keychain()
 	}
 	return OnePassword(map[string]string{
-		JiraAPIToken:       cfg.Secrets.JiraAPITokenRef,
-		CloudflareAPIToken: cfg.Secrets.CloudflareAPITokenRef,
-		DiscourseAPIKey:    cfg.Secrets.DiscourseAPIKeyRef,
+		JiraAPIToken:            cfg.Secrets.JiraAPITokenRef,
+		CloudflareAPIToken:      cfg.Secrets.CloudflareAPITokenRef,
+		DiscourseAPIKey:         cfg.Secrets.DiscourseAPIKeyRef,
+		GoogleServiceAccountKey: cfg.Secrets.GoogleServiceAccountKeyRef,
 	})
 }
 

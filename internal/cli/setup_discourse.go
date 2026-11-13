@@ -11,7 +11,6 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/yippieskippie24/aps-tools/internal/browser"
-	"github.com/yippieskippie24/aps-tools/internal/clipboard"
 	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/connectors/discourse"
 	"github.com/yippieskippie24/aps-tools/internal/secrets"
@@ -207,69 +206,16 @@ func approveUserKey(ctx context.Context, out io.Writer, site, clientID string) (
 	return key, nil
 }
 
-// saveUserKey stores an approved user key. The Keychain takes it directly.
-// 1Password is never written to by the tool (docs/decisions/0006), so the
-// key goes on the clipboard for a moment and the webmaster saves it there.
+// saveUserKey stores an approved user key (see saveGeneratedSecret).
 func saveUserKey(ctx context.Context, out io.Writer, cfg *config.Config, key string) (string, error) {
-	if !cfg.Secrets.UsesOnePassword() {
-		if err := secrets.Keychain().Set(secrets.DiscourseAPIKey, key); err != nil {
-			return "", err
-		}
-		return "key: Keychain (aps-tools)", nil
-	}
-
-	if err := clipboard.Copy(key); err != nil {
-		return "", errors.New("couldn't copy the key to the clipboard: " + err.Error())
-	}
-	defer clipboard.Clear()
-	lipgloss.Fprintln(out)
-	lipgloss.Fprintln(out, boldStyle.Render("Save the key in 1Password"))
-	lipgloss.Fprintln(out, "  The key is now "+boldStyle.Render("on your clipboard")+fmt.Sprintf(" (%d characters).", len(key)))
-	lipgloss.Fprintln(out, dimStyle.Render("  It is NOT the scrambled text from the forum page. Don't copy anything else until step 2."))
-	lipgloss.Fprintln(out, "  1. In 1Password, create a new "+boldStyle.Render("API Credential")+" item, e.g. \"APS Discourse key (aps-tools)\".")
-	lipgloss.Fprintln(out, "     (Updating an item from an earlier try? Paste over its old value.)")
-	lipgloss.Fprintln(out, "  2. Paste into its "+boldStyle.Render("credential")+" field and save.")
-	lipgloss.Fprintln(out, "  3. Click the arrow next to that field → "+boldStyle.Render("Copy Secret Reference")+", and paste it below.")
-	lipgloss.Fprintln(out)
-
-	ref := cfg.Secrets.DiscourseAPIKeyRef
-	for attempt := 1; ; attempt++ {
-		form := huh.NewForm(huh.NewGroup(
-			huh.NewInput().
-				Title("1Password secret reference").
-				Placeholder("op://Vault/Item/credential").
-				Value(&ref).
-				Validate(func(v string) error {
-					if !secrets.LooksLikeReference(v) {
-						return errors.New("paste a secret reference — it looks like op://Vault/Item/field")
-					}
-					return nil
-				}),
-		)).WithTheme(formTheme)
-		if err := form.RunWithContext(ctx); err != nil {
-			return "", cancelled(err)
-		}
-		ref = secrets.CleanReference(ref)
-		lipgloss.Fprintln(out, dimStyle.Render("Reading it back from 1Password… (approve the prompt if one appears)"))
-		got, err := secrets.ReadReference(ref)
-		msg := ""
-		if err != nil {
-			msg = err.Error()
-		} else {
-			msg = discourse.ExplainStoredKey(got, key)
-		}
-		if msg == "" {
-			break
-		}
-		if attempt == 3 {
-			return "", errors.New(msg + ". Nothing was saved — run: aps-tools setup discourse")
-		}
-		_ = clipboard.Copy(key)
-		lipgloss.Fprintln(out, warnStyle.Render("! ")+msg+".")
-		lipgloss.Fprintln(out, dimStyle.Render("  The key is on your clipboard again. Fix the item in 1Password, then paste the reference again."))
-	}
-	cfg.Secrets.DiscourseAPIKeyRef = ref
-	return "key: 1Password (" + ref + ")", nil
+	return saveGeneratedSecret(ctx, out, cfg, generatedSecret{
+		key:      secrets.DiscourseAPIKey,
+		value:    key,
+		itemName: "APS Discourse key (aps-tools)",
+		warning:  "It is NOT the scrambled text from the forum page.",
+		rerun:    "aps-tools setup discourse",
+		explain:  discourse.ExplainStoredKey,
+	})
 }
 
 // pickMemberGroup asks which group, if any, every member should be in.

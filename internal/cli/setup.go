@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
+	"github.com/yippieskippie24/aps-tools/internal/clipboard"
 	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/secrets"
@@ -60,6 +62,14 @@ Run "aps-tools setup" on its own to see what's connected.`,
 			Args:  cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				return setupDiscourse(cmd.Context(), cmd.OutOrStdout())
+			},
+		},
+		&cobra.Command{
+			Use:   "sheet",
+			Short: "Connect the membership Google Sheet",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return setupSheet(cmd.Context(), cmd.OutOrStdout())
 			},
 		},
 		&cobra.Command{
@@ -197,6 +207,8 @@ func refField(cfg *config.Config, key string) *string {
 		return &cfg.Secrets.CloudflareAPITokenRef
 	case secrets.DiscourseAPIKey:
 		return &cfg.Secrets.DiscourseAPIKeyRef
+	case secrets.GoogleServiceAccountKey:
+		return &cfg.Secrets.GoogleServiceAccountKeyRef
 	}
 	panic("refField: no settings field for secret " + key)
 }
@@ -271,6 +283,88 @@ func (s *secretAsk) where() string {
 		return "key: 1Password (" + secrets.CleanReference(s.typed) + ")"
 	}
 	return "key: Keychain (aps-tools)"
+}
+
+// generatedSecret is a key the tool obtained itself (approved in the
+// browser, or read from a downloaded file) and must now store.
+type generatedSecret struct {
+	key      string // secret name, e.g. secrets.DiscourseAPIKey
+	value    string
+	itemName string // suggested 1Password item name
+	warning  string // optional reminder shown under "on your clipboard"
+	rerun    string // command to run again if it fails
+	// explain says why a value read back from 1Password isn't value,
+	// without showing either; "" means they match.
+	explain func(stored, want string) string
+}
+
+// saveGeneratedSecret stores a key the tool obtained itself. The Keychain
+// takes it directly. 1Password is never written to by the tool
+// (docs/decisions/0006), so the key goes on the clipboard for a moment, the
+// webmaster saves it in 1Password and pastes back its secret reference, and
+// the tool reads it back to make sure it matches. Returns where it went.
+func saveGeneratedSecret(ctx context.Context, out io.Writer, cfg *config.Config, g generatedSecret) (string, error) {
+	if !cfg.Secrets.UsesOnePassword() {
+		if err := secrets.Keychain().Set(g.key, g.value); err != nil {
+			return "", err
+		}
+		return "key: Keychain (aps-tools)", nil
+	}
+
+	if err := clipboard.Copy(g.value); err != nil {
+		return "", errors.New("couldn't copy the key to the clipboard: " + err.Error())
+	}
+	defer clipboard.Clear()
+	lipgloss.Fprintln(out)
+	lipgloss.Fprintln(out, boldStyle.Render("Save the key in 1Password"))
+	lipgloss.Fprintln(out, "  The key is now "+boldStyle.Render("on your clipboard")+fmt.Sprintf(" (%d characters).", len(g.value)))
+	if g.warning != "" {
+		lipgloss.Fprintln(out, dimStyle.Render("  "+g.warning+" Don't copy anything else until step 2."))
+	}
+	lipgloss.Fprintln(out, "  1. In 1Password, create a new "+boldStyle.Render("API Credential")+" item, e.g. \""+g.itemName+"\".")
+	lipgloss.Fprintln(out, "     (Updating an item from an earlier try? Paste over its old value.)")
+	lipgloss.Fprintln(out, "  2. Paste into its "+boldStyle.Render("credential")+" field and save.")
+	lipgloss.Fprintln(out, "  3. Click the arrow next to that field → "+boldStyle.Render("Copy Secret Reference")+", and paste it below.")
+	lipgloss.Fprintln(out)
+
+	ref := *refField(cfg, g.key)
+	for attempt := 1; ; attempt++ {
+		form := huh.NewForm(huh.NewGroup(
+			huh.NewInput().
+				Title("1Password secret reference").
+				Placeholder("op://Vault/Item/credential").
+				Value(&ref).
+				Validate(func(v string) error {
+					if !secrets.LooksLikeReference(v) {
+						return errors.New("paste a secret reference — it looks like op://Vault/Item/field")
+					}
+					return nil
+				}),
+		)).WithTheme(formTheme)
+		if err := form.RunWithContext(ctx); err != nil {
+			return "", cancelled(err)
+		}
+		ref = secrets.CleanReference(ref)
+		lipgloss.Fprintln(out, dimStyle.Render("Reading it back from 1Password… (approve the prompt if one appears)"))
+		got, err := secrets.ReadReference(ref)
+		msg := ""
+		if err != nil {
+			msg = err.Error()
+		} else {
+			msg = g.explain(got, g.value)
+		}
+		if msg == "" {
+			break
+		}
+		if attempt == 3 {
+			return "", errors.New(msg + ". Nothing was saved — run: " + g.rerun)
+		}
+		_ = clipboard.Copy(g.value)
+		lipgloss.Fprintln(out, warnStyle.Render("! ")+msg+".")
+		lipgloss.Fprintln(out, dimStyle.Render("  The key is on your clipboard again. Fix the item in 1Password, then paste the reference again."))
+	}
+	*refField(cfg, g.key) = ref
+	return "key: 1Password (" + ref + ")", nil
 }
 
 // errSilent signals failure after the message has already been printed.
