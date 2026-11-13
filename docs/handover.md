@@ -50,10 +50,11 @@ system; your job is to create keys and connect the tool.
    brew install yippieskippie24/tap/aps-tools
    ```
 3. Run `aps-tools` to open the app, or `aps-tools --help` for the list of commands.
-4. Choose where API keys are kept (Keychain or 1Password): `aps-tools setup secrets`. See
+4. Enter your own name and reply-to email: `aps-tools setup webmaster`.
+5. Choose where API keys are kept (Keychain or 1Password): `aps-tools setup secrets`. See
    [docs/setup/1password.md](setup/1password.md).
-5. Connect each system by following the [setup guides](setup/README.md) in order.
-6. Run `aps-tools doctor` to confirm everything is connected.
+6. Connect each system by following the [setup guides](setup/README.md) in order.
+7. Run `aps-tools doctor` to confirm everything is connected.
 
 To update later: `brew upgrade aps-tools`.
 

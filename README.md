@@ -3,7 +3,8 @@
 A terminal app that helps the APS Webmaster set up and check member access across every APS
 system (membership sheet, mailing list, Jira service desk, Discourse) from one place.
 
-> **Status:** early development (Phase 1: member checks; Jira is connected). See the [roadmap](docs/design.md#4-features-and-phases).
+> **Status:** Phase 1 (read-only member checks across all four systems) is complete. Phase 2
+> (guided onboarding) is next. See the [roadmap](docs/design.md#4-features-and-phases).
 
 ## Install
 

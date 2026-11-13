@@ -118,7 +118,7 @@ func Run(ctx context.Context, d Deps) []Result {
 			results = append(results, Result{
 				Name: "Your details", Status: Warn,
 				Detail: "Your name and/or email aren't filled in yet.",
-				Fix:    "Edit the [webmaster] section of " + path,
+				Fix:    "Run: aps-tools setup webmaster",
 			})
 		} else {
 			results = append(results, Result{

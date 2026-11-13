@@ -41,6 +41,14 @@ Run "aps-tools setup" on its own to see what's connected.`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{
+			Use:   "webmaster",
+			Short: "Enter your name and reply-to email (used in welcome emails)",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return setupWebmaster(cmd.Context(), cmd.OutOrStdout())
+			},
+		},
+		&cobra.Command{
 			Use:   "secrets",
 			Short: "Choose where API keys are kept: macOS Keychain or 1Password",
 			Args:  cobra.NoArgs,
