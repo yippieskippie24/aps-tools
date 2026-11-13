@@ -42,7 +42,7 @@ One installable terminal app (`aps-tools`) that:
 |---|---|---|---|
 | **Membership Google Sheet** | A row (this is the master list) | Google Sheets API via a free service account | To build |
 | **Mailing list (Cloudflare)** | Their email is on the list **and** verified with Cloudflare | Cloudflare API (Email Routing + Worker) | To investigate |
-| **Jira Service Management** (free plan) | They are a customer on the APS service desk | Jira Cloud REST API with an API token | To build |
+| **Jira Service Management** (free plan) | They are a customer on the APS service desk | Jira Cloud REST API with an API token | **Check built** ([setup](setup/jira.md)) |
 | **Discourse** (hosted by Discourse) | An account / invite, possibly group membership | Discourse Admin API key | To investigate |
 | **Welcome email** | They receive instructions on what to do next | Generated HTML "copy page"; sent by hand from the webmaster's own mailbox | To build |
 | ~~Squarespace website~~ | — | — | **Out of scope.** Being retired Dec 2026; the new site has no user accounts. |
@@ -81,14 +81,18 @@ content will be written together and stored as an editable template.
 The work is split into phases so that something useful exists early and every phase is safe to
 stop at.
 
-### Phase 0 — Foundation ✅ in progress
+### Phase 0 — Foundation ✅ done
 - Project skeleton, `aps-tools` command, interactive TUI home screen.
 - Config file (`~/.config/aps-tools/config.toml`) and macOS Keychain storage for secrets.
 - `aps-tools doctor` to test every connection.
 - Release pipeline: GitHub Releases + Homebrew tap, so `brew install` works from day one.
 - Documentation structure (this file, handover guide, architecture, decision records).
 
-### Phase 1 — Member check (read-only)
+### Phase 1 — Member check (read-only) 🔨 in progress
+
+Progress: the check engine, `aps-tools check`, the "Check a member" screen, guided setup, and
+1Password support are built. **Jira is connected**. Google Sheet, Cloudflare and Discourse are next.
+
 - Connectors for Google Sheet, Cloudflare, Jira, Discourse that can **look up** a member.
 - `aps-tools check <email>` and a TUI "Check a member" screen.
 - Report shows nuanced states, not just yes/no (e.g. *invited but not accepted*,
@@ -125,7 +129,8 @@ stop at.
    checklist step you confirm, so it can't be forgotten.
 5. **Two ways to use it.** An interactive TUI (`aps-tools`) for day-to-day work, and plain commands
    (`aps-tools check someone@example.com`) for quick answers.
-6. **Secrets stay in the Keychain.** API keys and tokens are stored in the macOS Keychain, never
+6. **Secrets stay in the Keychain or 1Password.** API keys and tokens are stored in the macOS
+   Keychain or read from the webmaster's 1Password ([decision 0006](decisions/0006-optional-1password.md)), never
    in files. Non-secret settings (URLs, IDs) live in `~/.config/aps-tools/config.toml`.
 7. **Plain English.** Error messages say what went wrong *and what to do about it*.
 
@@ -137,7 +142,7 @@ stop at.
 | 2 | How is Discourse sign-up configured (invite-only, approval, groups, SSO)? | Build `aps-tools discourse discover` and run it. |
 | 3 | What are the Google Sheet's column headers, and which columns should the tool write? | Review headers (no member data needed). |
 | 4 | What should the welcome email say? | Write it together in Phase 2. |
-| 5 | Which Jira service desk ID / customer setup is used? | Look it up via the API once a token is set up. |
+| 5 | ~~Which Jira service desk ID / customer setup is used?~~ | **Answered:** `aps-tools setup jira` lists the service desks and saves the chosen one. Still to confirm with real data: does the API's customer search find every customer? |
 
 ## 7. Decisions
 

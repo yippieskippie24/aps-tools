@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/yippieskippie24/aps-tools/internal/check"
+	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/doctor"
 )
 
@@ -52,6 +54,29 @@ func TestWritePreviews(t *testing.T) {
 		doc.screen = screenDoctor
 		doc.results = doctor.Run(t.Context(), testDeps())
 		write("doctor", doc)
+
+		chk := a
+		chk.screen = screenCheck
+		chk.member.report = &check.Report{
+			Email: "alex@example.com",
+			Results: []check.SystemResult{
+				{System: "Jira Service Management", MemberStatus: connectors.MemberStatus{
+					State: connectors.StateOK, Summary: "Customer on the APS Help service desk.",
+					Details: []string{"Name in Jira: Alex Example"}}},
+				{System: "Discourse", MemberStatus: connectors.MemberStatus{
+					State: connectors.StatePending, Summary: "Invited 12 days ago; invite not accepted yet.",
+					Fix: "Resend the invite, or remind them to check their spam folder."}},
+				{System: "Mailing list (Cloudflare)", MemberStatus: connectors.MemberStatus{
+					State: connectors.StateMissing, Summary: "Not on the mailing list.",
+					Fix: "Add them to the list."}},
+			},
+		}
+		write("check-report", chk)
+
+		chkIn := a
+		chkIn, _ = chkIn.openCheck()
+		chkIn = typeText(t, chkIn, "alex@exam")
+		write("check-input", chkIn)
 
 		help := a
 		help.screen = screenHelp

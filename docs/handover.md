@@ -29,7 +29,7 @@ system; your job is to create keys and connect the tool.
 |---|---|---|---|
 | Google Sheet (membership list) | Edit access to the sheet | A free Google Cloud service account, shared on the sheet | _Phase 1 — coming_ |
 | Cloudflare (APS email + mailing list) | Membership on the APS Cloudflare account | A Cloudflare API token | _Phase 1 — coming_ |
-| Jira Service Management | An agent seat on the APS Jira site (free plan = 3 seats) | An Atlassian API token from your own account | _Phase 1 — coming_ |
+| Jira Service Management | An agent seat on the APS Jira site (free plan = 3 seats) | An Atlassian API token from your own account | [docs/setup/jira.md](setup/jira.md) |
 | Discourse | Admin on the APS Discourse site | A Discourse admin API key | _Phase 1 — coming_ |
 | GitHub (this tool's code) | Optional: maintainer access to the repo | Nothing, unless you want to change the tool | [development.md](development.md) |
 
@@ -49,7 +49,10 @@ system; your job is to create keys and connect the tool.
    brew install yippieskippie24/tap/aps-tools
    ```
 3. Run `aps-tools` to open the app, or `aps-tools --help` for the list of commands.
-4. Run `aps-tools doctor` to see which connections still need setting up.
+4. Choose where API keys are kept (Keychain or 1Password): `aps-tools setup secrets`. See
+   [docs/setup/1password.md](setup/1password.md).
+5. Connect each system by following the [setup guides](setup/README.md) in order.
+6. Run `aps-tools doctor` to confirm everything is connected.
 
 To update later: `brew upgrade aps-tools`.
 
@@ -58,7 +61,7 @@ To update later: `brew upgrade aps-tools`.
 | What | Where | Safe to share? |
 |---|---|---|
 | Settings (URLs, IDs) | `~/.config/aps-tools/config.toml` — run `aps-tools config path` to see it | Yes — no secrets in it |
-| API keys and tokens | macOS **Keychain Access** app, search for `aps-tools` | **No** |
+| API keys and tokens | macOS **Keychain Access** app (search `aps-tools`), **or** your 1Password, depending on `aps-tools setup secrets` | **No** |
 
 ## 5. Getting help
 

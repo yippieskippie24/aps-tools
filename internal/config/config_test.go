@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -70,4 +71,51 @@ func TestLoadRejectsUnknownSettings(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "emial") {
 		t.Errorf("LoadFrom() error = %v, want it to name the misspelled setting", err)
 	}
+}
+
+func TestSaveKeepsCommentsAndRoundTrips(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	want := &Config{
+		Webmaster: Webmaster{Name: `Alex "AJ" Example`, Email: "alex@example.com"},
+		Jira: Jira{
+			Site:            "example.atlassian.net",
+			Email:           "alex@example.com",
+			ServiceDeskID:   "7",
+			ServiceDeskName: `Help \ Desk`,
+		},
+	}
+	if err := SaveTo(path, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("saved file doesn't load: %v", err)
+	}
+	if *got != *want {
+		t.Errorf("round trip changed the settings:\n got  %+v\n want %+v", *got, *want)
+	}
+	raw, _ := os.ReadFile(path)
+	if !strings.Contains(string(raw), "# Your Jira Cloud site address") {
+		t.Error("saving dropped the explanatory comments")
+	}
+}
+
+// TestTemplateCoversEveryField fails if a new setting is added to Config but
+// not to the file template — otherwise Save would silently lose it.
+func TestTemplateCoversEveryField(t *testing.T) {
+	var check func(v reflect.Value, prefix string)
+	check = func(v reflect.Value, prefix string) {
+		for i := 0; i < v.NumField(); i++ {
+			f := v.Type().Field(i)
+			name := prefix + f.Name
+			if f.Type.Kind() == reflect.Struct {
+				check(v.Field(i), name+".")
+				continue
+			}
+			if !strings.Contains(fileTemplate, "."+name+" }}") {
+				t.Errorf("config.%s is missing from fileTemplate in template.go", name)
+			}
+		}
+	}
+	check(reflect.ValueOf(Config{}), "")
 }

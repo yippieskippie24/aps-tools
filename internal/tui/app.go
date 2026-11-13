@@ -29,6 +29,7 @@ const (
 	screenHome screen = iota
 	screenDoctor
 	screenHelp
+	screenCheck
 )
 
 // maxContentWidth keeps lines readable on very wide terminals.
@@ -49,13 +50,17 @@ type App struct {
 
 	// Test connections screen
 	checking bool
-	spin     int // which spinner frame to draw
+	spin     int // which spinner frame to draw (shared by all screens)
 	results  []doctor.Result
+
+	// Check a member screen (see checkscreen.go)
+	member memberCheck
 }
 
 // New creates the app. deps is normally doctor.DefaultDeps().
 func New(deps doctor.Deps) App {
-	return App{deps: deps, styles: newStyles(true), width: 80, height: 24}
+	s := newStyles(true)
+	return App{deps: deps, styles: s, width: 80, height: 24, member: newMemberCheck(s)}
 }
 
 // Run starts the app and blocks until the user quits.
@@ -98,6 +103,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
 		a.styles = newStyles(msg.IsDark())
+		a.member.restyle(a.styles)
 		return a, nil
 
 	case tea.WindowSizeMsg:
@@ -105,7 +111,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case spinTickMsg:
-		if !a.checking {
+		if !a.checking && !a.member.running {
 			return a, nil
 		}
 		a.spin = (a.spin + 1) % len(spinnerFrames)
@@ -114,6 +120,23 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case doctorDoneMsg:
 		a.checking = false
 		a.results = msg.results
+		return a, nil
+
+	case checkDoneMsg:
+		a.member.running = false
+		if msg.err != nil {
+			a.member.err = msg.err.Error()
+			return a, a.member.input.Focus()
+		}
+		a.member.report = &msg.report
+		return a, nil
+
+	case copiedMsg:
+		if msg.err != nil {
+			a.member.notice = "Couldn't copy: " + msg.err.Error()
+		} else {
+			a.member.notice = "Report copied — paste it into an email or note."
+		}
 		return a, nil
 
 	case tea.KeyPressMsg:
@@ -128,6 +151,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.updateDoctor(msg)
 		case screenHelp:
 			return a.updateHelp(msg)
+		case screenCheck:
+			return a.updateCheck(msg)
 		}
 	}
 	return a, nil
@@ -162,6 +187,8 @@ func (a App) updateHome(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // choose acts on a menu item.
 func (a App) choose(item menuItem) (tea.Model, tea.Cmd) {
 	switch item.action {
+	case actionCheck:
+		return a.openCheck()
 	case actionDoctor:
 		a.screen = screenDoctor
 		a.checking = true
@@ -218,6 +245,9 @@ func (a App) View() tea.View {
 	case screenHelp:
 		body = a.viewHelp(w)
 		keys = a.keyHelp("esc", "back")
+	case screenCheck:
+		body = a.viewCheck(w)
+		keys = a.checkKeys()
 	}
 
 	page := lipgloss.JoinVertical(lipgloss.Left,

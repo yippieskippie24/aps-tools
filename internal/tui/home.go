@@ -11,6 +11,7 @@ type action int
 
 const (
 	actionComingSoon action = iota // feature not built yet; explain when it arrives
+	actionCheck
 	actionDoctor
 	actionHelp
 	actionQuit
@@ -28,7 +29,7 @@ type menuItem struct {
 // menu is the home screen, top to bottom. To add a feature, add an item here
 // and handle its action in App.choose (app.go).
 var menu = []menuItem{
-	{key: "1", title: "Check a member", desc: "See a member's status in every APS system", action: actionComingSoon, phase: "Phase 1"},
+	{key: "1", title: "Check a member", desc: "See a member's status in every APS system", action: actionCheck},
 	{key: "2", title: "Onboard a new member", desc: "Set up a new member everywhere, then draft their welcome email", action: actionComingSoon, phase: "Phase 2"},
 	{key: "3", title: "Test connections", desc: "Make sure the tool can reach every system", action: actionDoctor},
 	{key: "4", title: "Help", desc: "Keys, documentation, and where things are kept", action: actionHelp},

@@ -38,7 +38,7 @@
 ```
 
 **Rule of thumb:** screens (`tui`) and commands (`cli`) contain *no business logic*. They call
-shared packages (`doctor`, and later `check` and `onboard`), which call connectors. That way the
+shared packages (`doctor`, `check`, and later `onboard`), which call connectors. That way the
 TUI and the plain commands always behave the same.
 
 ## Folder guide
@@ -46,12 +46,14 @@ TUI and the plain commands always behave the same.
 | Folder | What lives here |
 |---|---|
 | `cmd/aps-tools/` | The program's entry point. Tiny — it just starts `internal/cli`. |
-| `internal/cli/` | One file per command (`doctor.go`, `config.go`, `version.go`). `root.go` opens the TUI when no command is given. |
-| `internal/tui/` | The interactive app. `app.go` is the main model; `styles.go` holds colours. |
+| `internal/cli/` | One file per command (`check.go`, `doctor.go`, `config.go`, `version.go`). `setup.go` holds shared setup code (including asking for API keys); each system's guided setup is in `setup_<system>.go`. `root.go` opens the TUI when no command is given. |
+| `internal/tui/` | The interactive app. `app.go` is the main model and screen switching; `home.go` the menu; `checkscreen.go` "Check a member"; `screens.go` Test connections and Help; `styles.go` holds every colour. |
+| `internal/check/` | Checks one member against every connector at once and builds the report (also its plain-text copy). |
 | `internal/doctor/` | Checks the tool's own setup and every connector's connection. |
-| `internal/connectors/` | The `Connector` interface (`connector.go`) and the list of active connectors (`registry.go`). Each system gets its own sub-folder. |
-| `internal/config/` | Loads and saves `config.toml`. `template.go` is the commented starter file. |
-| `internal/secrets/` | Reads/writes the macOS Keychain. All Keychain entry names are defined here. |
+| `internal/connectors/` | The `Connector` interface and member states (`connector.go`) and the registry (`registry.go`). Each system gets its own sub-folder, e.g. `jira/`. `all/` switches every connector on, in display order. |
+| `internal/config/` | Loads and saves `config.toml`. `template.go` is the file's layout with a comment on every setting; saving always goes through it, so comments are never lost. |
+| `internal/secrets/` | Where API keys come from: the macOS Keychain (`secrets.go`) or 1Password via the `op` tool (`onepassword.go`). All key names are defined in `secrets.go`. |
+| `internal/clipboard/` | Copies text to the Mac clipboard (used to copy reports). |
 | `internal/version/` | The version number, stamped in at release time. |
 | `docs/` | All documentation. |
 | `.github/workflows/` | CI (tests on every push) and releases (on version tags). |
@@ -70,17 +72,39 @@ same `Connector` interface (see `internal/connectors/connector.go`):
 | `Name()` | Human name, e.g. `Jira Service Management`. Shown in the UI. |
 | `Missing()` | Plain-English list of settings or keys not set up yet. Empty = ready. |
 | `TestConnection(ctx)` | Makes a harmless read-only call to prove the keys work. |
+| `CheckMember(ctx, email)` | Read-only: is this member set up here? Returns a `MemberStatus` (state, summary, details, and what to do). |
 
-Methods for checking and setting up members are added in Phases 1 and 2.
+A method for *setting up* a member is added in Phase 2.
+
+### Member states
+
+Every check result has one of these states (`internal/connectors/connector.go`), from best to worst:
+
+| State | Shown as | Meaning |
+|---|---|---|
+| `StateOK` | ✓ Set up | Fully set up. |
+| `StatePending` | … Waiting on member | Started, but the member must act (accept an invite, verify an email). |
+| `StateUnknown` | ? Couldn't check | System not connected, or didn't answer. |
+| `StateProblem` | ✗ Problem | Exists, but something is wrong (e.g. deactivated). |
+| `StateMissing` | ✗ Not set up | Not set up at all. |
+
+A missing member is a normal result, not an error. Connectors return an error only when
+the check itself couldn't be done.
 
 ### How to add a new connector
 
-1. Create `internal/connectors/<id>/` with a `<id>.go` file implementing `Connector`.
-2. Add any non-secret settings as a new section in `internal/config/config.go` **and** a
-   commented example in `internal/config/template.go`.
-3. Add any secret names as constants in `internal/secrets/secrets.go`.
-4. Register it in `internal/connectors/registry.go`.
-5. Write a setup guide in `docs/setup/<id>.md` and link it from [handover.md](handover.md).
-6. Update the systems table in [design.md](design.md).
+1. Create `internal/connectors/<id>/` with a `<id>.go` file implementing `Connector`, plus
+   tests that use a fake server (see `jira/jira_test.go`).
+2. Add any non-secret settings as a new section in `internal/config/config.go` **and** in the
+   file layout in `internal/config/template.go` (a test fails if you forget).
+3. For each API key: add a name in `internal/secrets/secrets.go`; add a `<name>_ref` field to
+   the `Secrets` settings (for 1Password); map it in `secrets.ForConfig` and in `refField`
+   (`internal/cli/setup.go`).
+4. Register it in `internal/connectors/all/all.go`, and remove it from `NotYetBuilt()` in
+   `internal/connectors/registry.go`.
+5. Add a guided setup in `internal/cli/setup_<id>.go` and register the sub-command in `setup.go`.
+6. Write a setup guide in `docs/setup/<id>.md` and link it from [setup/README.md](setup/README.md)
+   and [handover.md](handover.md).
+7. Update the systems table in [design.md](design.md).
 
 To **remove** a system, reverse these steps.

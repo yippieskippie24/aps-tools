@@ -24,6 +24,10 @@ const ServiceName = "aps-tools"
 // Add a constant here when a new connector needs a secret, and document it
 // in that connector's setup guide in docs/setup/.
 const (
+	// JiraAPIToken is the Atlassian API token used for Jira Service
+	// Management. See docs/setup/jira.md.
+	JiraAPIToken = "jira-api-token"
+
 	// probeKey is never actually stored; Doctor looks it up only to prove
 	// the Keychain can be reached.
 	probeKey = "doctor-probe"

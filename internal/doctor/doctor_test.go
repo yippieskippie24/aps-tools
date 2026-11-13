@@ -21,13 +21,17 @@ func (f fakeConnector) ID() string                           { return f.name }
 func (f fakeConnector) Name() string                         { return f.name }
 func (f fakeConnector) Missing() []string                    { return f.missing }
 func (f fakeConnector) TestConnection(context.Context) error { return f.testErr }
+func (f fakeConnector) CheckMember(context.Context, string) (connectors.MemberStatus, error) {
+	return connectors.MemberStatus{}, nil
+}
 
 func deps(cfg *config.Config, loadErr error, conns ...connectors.Connector) Deps {
 	return Deps{
-		ConfigPath: func() (string, error) { return "/tmp/example/config.toml", nil },
-		LoadConfig: func() (*config.Config, error) { return cfg, loadErr },
-		Store:      secrets.NewMemory(),
-		Connectors: func(*config.Config, secrets.Store) []connectors.Connector { return conns },
+		ConfigPath:       func() (string, error) { return "/tmp/example/config.toml", nil },
+		LoadConfig:       func() (*config.Config, error) { return cfg, loadErr },
+		Secrets:          func(*config.Config) secrets.Store { return secrets.NewMemory() },
+		CheckOnePassword: func() error { return nil },
+		Connectors:       func(*config.Config, secrets.Store) []connectors.Connector { return conns },
 	}
 }
 
@@ -86,8 +90,11 @@ func TestConnectorResultsKeepOrderAndReportProblems(t *testing.T) {
 	}
 
 	// Connectors run in parallel but must be reported in registry order.
-	n := len(rs)
-	if rs[n-3].Name != "Ready" || rs[n-2].Name != "Unconfigured" || rs[n-1].Name != "Broken" {
-		t.Errorf("connector results out of order: %+v", rs[n-3:])
+	pos := map[string]int{}
+	for i, r := range rs {
+		pos[r.Name] = i
+	}
+	if !(pos["Ready"] < pos["Unconfigured"] && pos["Unconfigured"] < pos["Broken"]) {
+		t.Errorf("connector results out of order: %+v", rs)
 	}
 }

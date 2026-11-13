@@ -6,8 +6,14 @@
 package cli
 
 import (
+	"errors"
+	"os"
+
+	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
 
+	// Registers every APS system connector (see internal/connectors/all).
+	_ "github.com/yippieskippie24/aps-tools/internal/connectors/all"
 	"github.com/yippieskippie24/aps-tools/internal/doctor"
 	"github.com/yippieskippie24/aps-tools/internal/tui"
 	"github.com/yippieskippie24/aps-tools/internal/version"
@@ -26,15 +32,19 @@ every APS system from one place.
 Run "aps-tools" on its own to open the interactive app.
 New webmaster? Start with docs/handover.md in the GitHub repository.`,
 		Version: version.String(),
-		// Don't print the usage text after every error; it buries the message.
-		SilenceUsage: true,
-		Args:         cobra.NoArgs,
+		// Don't print the usage text after every error; it buries the
+		// message. Errors are printed by Execute, below.
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return tui.Run(doctor.DefaultDeps())
 		},
 	}
 	root.SetVersionTemplate("{{.Version}}\n")
 	root.AddCommand(
+		newCheckCmd(),
+		newSetupCmd(),
 		newDoctorCmd(),
 		newConfigCmd(),
 		newVersionCmd(),
@@ -44,5 +54,11 @@ New webmaster? Start with docs/handover.md in the GitHub repository.`,
 
 // Execute runs the command line. It is called from cmd/aps-tools/main.go.
 func Execute() error {
-	return newRootCmd().Execute()
+	err := newRootCmd().Execute()
+	// Some commands print their own detailed failure message and return a
+	// marker error; don't repeat it.
+	if err != nil && !errors.Is(err, errSilent) && !errors.Is(err, errUnhealthy) {
+		lipgloss.Fprintln(os.Stderr, failStyle.Render("Error: ")+err.Error())
+	}
+	return err
 }

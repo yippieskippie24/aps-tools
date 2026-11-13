@@ -1,6 +1,6 @@
 # 0003 — Secrets in the macOS Keychain, settings in a TOML file
 
-- **Status:** Accepted
+- **Status:** Accepted. Extended by [0006](0006-optional-1password.md), which adds 1Password as an option.
 - **Date:** 2026-11-13
 
 ## Context

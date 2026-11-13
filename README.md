@@ -3,7 +3,7 @@
 A terminal app that helps the APS Webmaster set up and check member access across every APS
 system (membership sheet, mailing list, Jira service desk, Discourse) from one place.
 
-> **Status:** early development (Phase 0 — foundation). See the [roadmap](docs/design.md#4-features-and-phases).
+> **Status:** early development (Phase 1: member checks; Jira is connected). See the [roadmap](docs/design.md#4-features-and-phases).
 
 ## Install
 
@@ -24,10 +24,11 @@ go install github.com/yippieskippie24/aps-tools/cmd/aps-tools@latest
 ## Quick start
 
 ```bash
-aps-tools                # open the interactive app
-aps-tools doctor         # check that everything is connected
-aps-tools config init    # create your settings file
-aps-tools --help         # list every command
+aps-tools                          # open the interactive app
+aps-tools check alex@example.com   # check a member in every system
+aps-tools setup                    # connect APS systems (guided)
+aps-tools doctor                   # check that everything is connected
+aps-tools --help                   # list every command
 ```
 
 Inside the app: arrow keys (or `j`/`k`) to move, `Enter` to choose, `?` for help, `q` to go back or quit.
@@ -37,6 +38,7 @@ Inside the app: arrow keys (or `j`/`k`) to move, `Enter` to choose, `?` for help
 | If you want to… | Read |
 |---|---|
 | Take over as APS Webmaster | [Handover Guide](docs/handover.md) |
+| Connect a system (Jira, 1Password, …) | [Setup guides](docs/setup/README.md) |
 | Onboard a member by hand (or understand the process) | [How APS member onboarding works](docs/onboarding-process.md) |
 | Understand what the tool does and why | [Design](docs/design.md) |
 | Change the code | [Architecture](docs/architecture.md) · [Development Guide](docs/development.md) |
@@ -45,8 +47,8 @@ Inside the app: arrow keys (or `j`/`k`) to move, `Enter` to choose, `?` for help
 ## Privacy
 
 This repository is public and contains **no** credentials, member data, or APS-specific account
-details. Those live only on the webmaster's Mac — settings in `~/.config/aps-tools/config.toml`, keys in
-the macOS Keychain.
+details. Those live only on the webmaster's Mac: settings in `~/.config/aps-tools/config.toml`, keys in
+the macOS Keychain or the webmaster's 1Password.
 
 ## License
 

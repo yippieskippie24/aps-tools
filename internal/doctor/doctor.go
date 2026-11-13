@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -65,8 +66,10 @@ type Deps struct {
 	ConfigPath func() (string, error)
 	// LoadConfig reads the settings file.
 	LoadConfig func() (*config.Config, error)
-	// Store is where secrets are kept.
-	Store secrets.Store
+	// Secrets picks where API keys are kept, based on the settings.
+	Secrets func(*config.Config) secrets.Store
+	// CheckOnePassword confirms 1Password's command-line tool is ready.
+	CheckOnePassword func() error
 	// Connectors builds the list of outside systems to test.
 	Connectors func(*config.Config, secrets.Store) []connectors.Connector
 }
@@ -74,10 +77,11 @@ type Deps struct {
 // DefaultDeps returns the real settings file, Keychain, and connectors.
 func DefaultDeps() Deps {
 	return Deps{
-		ConfigPath: config.Path,
-		LoadConfig: config.Load,
-		Store:      secrets.Keychain(),
-		Connectors: connectors.All,
+		ConfigPath:       config.Path,
+		LoadConfig:       config.Load,
+		Secrets:          secrets.ForConfig,
+		CheckOnePassword: secrets.CheckOnePassword,
+		Connectors:       connectors.All,
 	}
 }
 
@@ -124,19 +128,12 @@ func Run(ctx context.Context, d Deps) []Result {
 		}
 	}
 
-	// 3. Keychain.
-	if err := secrets.CheckAccess(d.Store); err != nil {
-		results = append(results, Result{
-			Name: "Keychain", Status: Fail,
-			Detail: err.Error(),
-			Fix:    "Make sure you're logged in to your Mac and the login keychain is unlocked (Keychain Access app).",
-		})
-	} else {
-		results = append(results, Result{Name: "Keychain", Status: OK, Detail: "Accessible."})
-	}
+	// 3. Where API keys are kept.
+	store := d.Secrets(cfg)
+	results = append(results, checkSecretStore(cfg, store, d.CheckOnePassword))
 
 	// 4. Outside systems.
-	conns := d.Connectors(cfg, d.Store)
+	conns := d.Connectors(cfg, store)
 	if len(conns) == 0 {
 		results = append(results, Result{
 			Name: "APS systems", Status: Info,
@@ -144,7 +141,30 @@ func Run(ctx context.Context, d Deps) []Result {
 		})
 		return results
 	}
-	return append(results, testConnectors(ctx, conns)...)
+	results = append(results, testConnectors(ctx, conns)...)
+	if later := connectors.NotYetBuilt(); len(later) > 0 {
+		results = append(results, Result{
+			Name: "Coming soon", Status: Info,
+			Detail: strings.Join(later, ", ") + " — not built into the tool yet.",
+		})
+	}
+	return results
+}
+
+// checkSecretStore confirms the chosen key store (Keychain or 1Password) works.
+func checkSecretStore(cfg *config.Config, store secrets.Store, checkOP func() error) Result {
+	if cfg.Secrets.UsesOnePassword() {
+		if err := checkOP(); err != nil {
+			return Result{Name: "1Password", Status: Fail, Detail: err.Error(),
+				Fix: "See docs/setup/1password.md, or switch back with: aps-tools setup secrets"}
+		}
+		return Result{Name: "1Password", Status: OK, Detail: "API keys are read from 1Password."}
+	}
+	if err := secrets.CheckAccess(store); err != nil {
+		return Result{Name: "Keychain", Status: Fail, Detail: err.Error(),
+			Fix: "Make sure you're logged in to your Mac and the login keychain is unlocked (Keychain Access app)."}
+	}
+	return Result{Name: "Keychain", Status: OK, Detail: "API keys are kept in the macOS Keychain."}
 }
 
 // testConnectors tests every connector at the same time (so one slow system

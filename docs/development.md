@@ -25,6 +25,17 @@ git clone https://github.com/yippieskippie24/aps-tools.git
 cd aps-tools
 ```
 
+## Running the tool before it's installed
+
+`aps-tools` isn't on your Mac until it's installed from a Homebrew release. While developing (or
+before the first release), run it from the project folder with `go run ./cmd/aps-tools` in
+place of `aps-tools`:
+
+```bash
+go run ./cmd/aps-tools setup jira
+go run ./cmd/aps-tools check alex@example.com
+```
+
 ## Everyday commands
 
 | Task | Command |

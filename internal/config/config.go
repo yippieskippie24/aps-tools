@@ -29,7 +29,35 @@ type Config struct {
 	// Webmaster describes the person running the tool. Used later to sign
 	// the welcome email.
 	Webmaster Webmaster `toml:"webmaster"`
+
+	// Secrets says where API keys are kept (Keychain or 1Password).
+	// See docs/setup/1password.md.
+	Secrets Secrets `toml:"secrets"`
+
+	// Jira holds the settings for Jira Service Management.
+	// See docs/setup/jira.md.
+	Jira Jira `toml:"jira"`
 }
+
+// Where API keys can be stored. See internal/secrets.
+const (
+	// StoreKeychain keeps keys in the macOS Keychain. This is the default.
+	StoreKeychain = "keychain"
+	// StoreOnePassword reads keys from 1Password via its "op" command-line tool.
+	StoreOnePassword = "1password"
+)
+
+// Secrets says where API keys are kept.
+type Secrets struct {
+	// Store is "keychain" (default when empty) or "1password".
+	Store string `toml:"store"`
+	// JiraAPITokenRef is the 1Password secret reference (op://...) for the
+	// Jira API token. Only used when Store is "1password".
+	JiraAPITokenRef string `toml:"jira_api_token_ref"`
+}
+
+// UsesOnePassword reports whether keys should be read from 1Password.
+func (s Secrets) UsesOnePassword() bool { return s.Store == StoreOnePassword }
 
 // Webmaster holds details about the current APS Webmaster.
 type Webmaster struct {
@@ -37,6 +65,18 @@ type Webmaster struct {
 	Name string `toml:"name"`
 	// Email is the address members should reply to.
 	Email string `toml:"email"`
+}
+
+// Jira holds the settings for Jira Service Management (Cloud).
+type Jira struct {
+	// Site is the Jira Cloud address without https://, e.g. "example.atlassian.net".
+	Site string `toml:"site"`
+	// Email is the webmaster's own Atlassian account email (the API token's owner).
+	Email string `toml:"email"`
+	// ServiceDeskID is the numeric ID of the service desk members belong to.
+	ServiceDeskID string `toml:"service_desk_id"`
+	// ServiceDeskName is that service desk's name, shown in reports.
+	ServiceDeskName string `toml:"service_desk_name"`
 }
 
 // Dir returns the folder that holds config.toml.
@@ -102,19 +142,52 @@ func WriteTemplate() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return path, writeTemplateTo(path)
+	if _, err := os.Stat(path); err == nil {
+		return "", fmt.Errorf("settings file already exists at %s — edit it instead", path)
+	}
+	return path, SaveTo(path, &Config{})
 }
 
-func writeTemplateTo(path string) error {
-	if _, err := os.Stat(path); err == nil {
-		return fmt.Errorf("settings file already exists at %s — edit it instead", path)
+// LoadOrEmpty reads the settings file, or returns empty settings if it
+// doesn't exist yet. Setup commands use this so they work on a fresh install.
+func LoadOrEmpty() (*Config, error) {
+	cfg, err := Load()
+	if errors.Is(err, ErrNotFound) {
+		return &Config{}, nil
+	}
+	return cfg, err
+}
+
+// Save writes the settings to the standard location, keeping all the
+// explanatory comments (see template.go).
+func Save(cfg *Config) error {
+	path, err := Path()
+	if err != nil {
+		return err
+	}
+	return SaveTo(path, cfg)
+}
+
+// SaveTo writes the settings to a specific path.
+//
+// It writes to a temporary file first and then renames it into place, so a
+// crash half-way through can never leave you with a half-written file.
+func SaveTo(path string, cfg *Config) error {
+	text, err := render(cfg)
+	if err != nil {
+		return err
 	}
 	// 0o700 / 0o600: only your user account can read the folder and file.
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("could not create folder for settings: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(Template), 0o600); err != nil {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(text), 0o600); err != nil {
 		return fmt.Errorf("could not write settings file: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("could not save settings file: %w", err)
 	}
 	return nil
 }
