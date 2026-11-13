@@ -85,11 +85,30 @@ Do this once when the GitHub repository is first created (or if the tap is lost)
    ```
 2. **Create the tap repo:** create a second **public** repo named exactly `homebrew-tap`
    (Homebrew requires the `homebrew-` prefix). It can be empty. Initialize it with a README.
-3. **Create a token** that lets the release job update the tap:
-   GitHub → Settings → Developer settings → **Fine-grained personal access tokens** → Generate.
-   - Repository access: *Only select repositories* → `homebrew-tap`
-   - Permissions: **Contents: Read and write**
-   - Set an expiry and a calendar reminder to renew it.
+3. **Create a token** that lets the release job update the tap. Create `homebrew-tap` (step 2)
+   first, because you pick it from a list here.
+   1. On GitHub, click your **profile picture** (top right) → **Settings**.
+   2. In the left sidebar, scroll to the bottom → **Developer settings**.
+   3. Left sidebar → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**.
+      (Use a *fine-grained* token, not a "classic" one: it can be limited to a single repo.)
+   4. Fill in the form:
+
+      | Field | Value |
+      |---|---|
+      | **Token name** | `aps-tools homebrew tap` |
+      | **Description** | `Lets aps-tools releases update the homebrew-tap repo` |
+      | **Resource owner** | your own account (`yippieskippie24`) |
+      | **Expiration** | the longest custom date allowed (up to 1 year) |
+      | **Repository access** | **Only select repositories** → choose `homebrew-tap` only |
+      | **Permissions → Repository permissions** | **Contents: Read and write**. Leave everything else as *No access*. GitHub adds **Metadata: Read-only** automatically; that's expected. |
+
+   5. Click **Generate token**.
+   6. **Copy the token now** (it starts with `github_pat_`). GitHub shows it only once. Don't save
+      it anywhere else; it goes straight into step 4.
+   7. Add a calendar reminder a week before the expiry date to repeat steps 3–4.
+
+   > GitHub also deletes tokens that go unused for a year. If you don't release for a year,
+   > expect to make a new token.
 4. **Give the token to the main repo:** in `aps-tools` → Settings → Secrets and variables →
    Actions → **New repository secret**, name `HOMEBREW_TAP_GITHUB_TOKEN`, paste the token.
 
