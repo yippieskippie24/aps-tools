@@ -53,6 +53,7 @@ type popup struct {
 	// one, enter submits it to onInput instead of choosing an item.
 	input    *textinput.Model
 	inputErr string
+	note     string // a one-off hint, e.g. "Tick someone first"
 	onInput  func(a App, value string) (App, tea.Cmd)
 	back     *popup // esc returns here; nil closes the popup
 	// onEsc, if set, is what esc does instead (e.g. stop emailing a list).
@@ -86,6 +87,17 @@ func (a App) openPopup(p *popup) (App, tea.Cmd) {
 func (a App) closePopups() App {
 	a.pop = nil
 	return a
+}
+
+// suggestedOrFirst is the suggested item that can be chosen, else the
+// first that can.
+func suggestedOrFirst(items []popItem) int {
+	for i, it := range items {
+		if it.suggested && it.off == "" {
+			return i
+		}
+	}
+	return firstAvailable(items)
 }
 
 func firstAvailable(items []popItem) int {
@@ -159,10 +171,12 @@ func (a App) updatePopup(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "space", " ", "x":
 		if p.pick < nc {
 			p.checks[p.pick].on = !p.checks[p.pick].on
+			p.note = ""
 			changed()
 		}
 	case "a":
 		if nc > 0 {
+			p.note = ""
 			all := true
 			for _, c := range p.checks {
 				all = all && c.on
@@ -173,9 +187,15 @@ func (a App) updatePopup(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			changed()
 		}
 	case "enter":
+		// On a tick box, enter means "done choosing": it moves down to
+		// the suggested action (so a second enter does it), rather than
+		// ticking. Space is the only key that ticks.
 		if p.pick < nc {
-			p.checks[p.pick].on = !p.checks[p.pick].on
-			changed()
+			if len(p.ticked()) == 0 {
+				p.note = "Tick someone first: space ticks the highlighted person, a ticks everyone."
+				return a, nil
+			}
+			p.pick = nc + suggestedOrFirst(p.items)
 			return a, nil
 		}
 		it := p.items[p.pick-nc]
@@ -294,6 +314,9 @@ func (a App) viewPopup(w int) string {
 		b.WriteString("\n")
 		b.WriteString(a.viewChecks(p, inner))
 	}
+	if p.note != "" {
+		b.WriteString("\n\n" + lipgloss.NewStyle().Foreground(s.p.warn).Width(inner).Render(p.note))
+	}
 	if len(p.items) > 0 {
 		b.WriteString("\n")
 		for i, it := range p.items {
@@ -320,7 +343,10 @@ func (a App) viewPopup(w int) string {
 	if hint == "" {
 		switch {
 		case nc > 0:
-			hint = "space tick or untick · a all or none · ↑/↓ move · enter choose · esc back"
+			hint = "space tick or untick · a all or none · ↑/↓ move · enter continue · esc back"
+			if p.pick >= nc {
+				hint = "↑/↓ choose · enter do it · ↑ back to the list to change who · esc back"
+			}
 		case p.input != nil:
 			hint = "enter OK · esc back"
 		case len(p.items) == 0:

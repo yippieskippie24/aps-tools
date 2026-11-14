@@ -85,6 +85,11 @@ func TestFollowUpResendAndEmail(t *testing.T) {
 	if a.pop.items[0].off == "" {
 		t.Fatal("with nobody ticked, the action should be unavailable")
 	}
+	// Enter doesn't tick: with nobody ticked, it says what to do.
+	a, _ = press(t, a, "enter")
+	if len(a.pop.ticked()) != 0 || a.pop.pick != 0 || !strings.Contains(a.View().Content, "Tick someone first") {
+		t.Fatalf("enter with nobody ticked:\n%s", a.View().Content)
+	}
 	// a ticks everyone; then untick Bo.
 	a, _ = press(t, a, "a")
 	a, _ = press(t, a, "down")
@@ -96,9 +101,11 @@ func TestFollowUpResendAndEmail(t *testing.T) {
 		t.Fatal("nothing should change before choosing the action")
 	}
 
-	// Choose the re-send.
-	for range 2 { // past Cy, to the first item
-		a, _ = press(t, a, "down")
+	// Enter means "done choosing": it moves to the suggested action (the
+	// re-send) without ticking anything; a second enter does it.
+	a, _ = press(t, a, "enter")
+	if len(a.pop.ticked()) != 2 || a.pop.pick != len(a.pop.checks) || len(resent) != 0 {
+		t.Fatalf("enter should move to the action (pick %d, ticked %v)", a.pop.pick, a.pop.ticked())
 	}
 	a, cmd = press(t, a, "enter")
 	a = settle(t, a, cmd)

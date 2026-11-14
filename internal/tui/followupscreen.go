@@ -23,8 +23,8 @@ import (
 //
 // The flow for each follow-up:
 //  1. Enter opens a popup listing its members as tick boxes, none ticked:
-//     the webmaster deliberately ticks who's included. Nothing has changed
-//     yet.
+//     the webmaster deliberately ticks who's included (space), then
+//     presses enter to move on to the actions. Nothing has changed yet.
 //  2. Choose the action (e.g. "Re-send … to 9 members"). It runs one
 //     member at a time, showing whose turn it is, then everyone is checked
 //     again.
@@ -186,7 +186,7 @@ func (a App) followupPopup(l followup.List) *popup {
 	byEmail := map[string]connectors.Person{}
 	pop := &popup{
 		title: k.Title(),
-		sub:   "Tick who to include (space, or a for everyone). Nothing changes until you choose below.",
+		sub:   "Tick who to include with space (a ticks everyone), then press enter. Nothing changes until you choose an action.",
 		lines: []string{a.styles.subtle.Render(k.Explain())},
 	}
 	for _, e := range l.Members {

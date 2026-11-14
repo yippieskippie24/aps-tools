@@ -22,8 +22,10 @@ passes are included, and a member can be in more than one list:
 
 **Choosing who.** Each follow-up opens as a list of tick boxes with **nobody ticked**, so every
 member included is a deliberate choice (the webmaster asked for this after first trying it with
-everyone ticked). Space ticks a member; `a` ticks or unticks everyone. The action's label counts
-who's ticked ("Onboard 9 members"), and nothing changes until it's chosen. On the command line,
+everyone ticked). Space ticks a member; `a` ticks or unticks everyone. Enter means "done
+choosing": it never ticks, but moves to the suggested action, and a second Enter does it. With
+nobody ticked, it says to tick someone first. The action's label counts who's ticked ("Onboard 9
+members"), and nothing changes until it's chosen. On the command line,
 `aps-tools followups <name>` shows the same tick list (`--skip` leaves people out of it,
 `--dry-run` changes nothing).
 Exclusions aren't remembered between runs. If some members should never be followed up, that's
