@@ -77,8 +77,9 @@ with **New** marked while their application and background check are in progress
 The tool reads it as a Google service account
 ([decision 0009](decisions/0009-google-service-account.md)) and finds columns by header text. It
 never shows the address or phone columns. In Phase 2 it will write back setup status so other
-board members can see who is fully set up, writing only to columns it owns (layout **to be
-decided**).
+board members can see who is fully set up. It will write full details to a **tab it owns**, and a
+short status in **one tool-owned column** on the member directory. That status links to the
+member's row on the details tab. See the [Phase 2 plan](plans/phase-2-onboarding.md).
 
 **Welcome email.** The webmaster sends from a personal iCloud (custom domain) mailbox, which has no
 sending API. Instead of sending, the tool generates a local HTML page with **Copy To**,
@@ -114,6 +115,7 @@ now, and on the APS account after the December 2026 switch-over
 - Read-only means zero risk, and it proves every API connection works.
 
 ### Phase 2 — Onboarding + welcome email
+Detailed plan (draft, for review): [plans/phase-2-onboarding.md](plans/phase-2-onboarding.md).
 - "Onboard a new member" flow: preview every step → run → live status per step.
 - Every step is **idempotent**: it checks first, only acts if something is missing, and can be
   safely re-run to finish a half-done onboarding.
@@ -125,6 +127,9 @@ now, and on the APS account after the December 2026 switch-over
 - **Bulk audit:** compare the Google Sheet against every system and list the gaps.
 - **Follow-ups:** flag members who were invited/added but never finished activating.
 - **Offboarding:** remove a lapsed member everywhere.
+- **Board changes:** half the board is elected each July. Update the role mailing lists
+  (board-members@, treasurer@, …) and the forum's board group, with a preview. Needed before July
+  2027. See [the Phase 2 plan, §5](plans/phase-2-onboarding.md).
 
 ### Phase 4 — Reply tracking
 - Discourse: flag private messages waiting on a reply (Discourse API).
