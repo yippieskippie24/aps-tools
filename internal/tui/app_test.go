@@ -88,7 +88,7 @@ func TestComingSoonShowsAMessage(t *testing.T) {
 
 func TestTestConnectionsRunsDoctorAndShowsResults(t *testing.T) {
 	a := New(testDeps())
-	a, cmd := press(t, a, "5")
+	a, cmd := press(t, a, "6")
 	if a.screen != screenDoctor || !a.checking || cmd == nil {
 		t.Fatalf("pressing 5 should start a connection test (screen=%v checking=%v)", a.screen, a.checking)
 	}
@@ -169,7 +169,7 @@ func typeText(t *testing.T, a App, text string) App {
 
 func TestCheckScreenRejectsBadEmail(t *testing.T) {
 	a := New(testDeps())
-	a, _ = press(t, a, "2")
+	a, _ = press(t, a, "3")
 	if a.screen != screenCheck {
 		t.Fatal("2 should open Check a member")
 	}
@@ -188,7 +188,7 @@ func TestCheckScreenRunsAndShowsReport(t *testing.T) {
 		}}}
 	}
 	a := tall(t, New(deps))
-	a, cmd := press(t, a, "2")
+	a, cmd := press(t, a, "3")
 	a = settle(t, a, cmd) // the member list (there's no sheet here, so it can't load)
 	a = typeText(t, a, "Alex@Example.com")
 	a, _ = press(t, a, "enter")
@@ -333,7 +333,7 @@ func TestOnboardScreen(t *testing.T) {
 	calls := 0
 	deps := onboardDeps(t, true, &calls)
 	a := tall(t, New(deps))
-	a, _ = press(t, a, "3")
+	a, _ = press(t, a, "4")
 	if a.screen != screenOnboard {
 		t.Fatal("3 should open Onboard a new member")
 	}
@@ -811,7 +811,7 @@ func TestCheckScreenListsMembersQuickly(t *testing.T) {
 		return []connectors.Connector{rosterSheet{fakeSheet{connectors.MemberStatus{State: connectors.StateOK, Summary: "Vetted."}}}, fakeList{&calls}}
 	}
 	a := tall(t, New(deps))
-	a, cmd := press(t, a, "2")
+	a, cmd := press(t, a, "3")
 	if a.screen != screenCheck || !a.people.loading {
 		t.Fatal("2 should open Check a member and read the member list")
 	}
@@ -852,7 +852,7 @@ func TestCheckScreenListsMembersQuickly(t *testing.T) {
 	// The list is kept: reopening the screen doesn't read the sheet again.
 	a, _ = press(t, a, "esc")
 	a, _ = press(t, a, "esc")
-	a, _ = press(t, a, "2")
+	a, _ = press(t, a, "3")
 	if a.people.loading {
 		t.Error("the member list should be reused, not read again")
 	}
@@ -866,7 +866,7 @@ func TestActivityLogScreen(t *testing.T) {
 	_ = log.Add(activity.Entry{Member: "sam@example.com", System: "Mailing list (Cloudflare)", OK: false, What: "Re-send verification email: too many requests"})
 
 	a := tall(t, New(deps))
-	a, _ = press(t, a, "4")
+	a, _ = press(t, a, "5")
 	if a.screen != screenLog || len(a.log.entries) != 2 {
 		t.Fatalf("4 should open the activity log: screen %v, %d entries", a.screen, len(a.log.entries))
 	}
@@ -962,7 +962,7 @@ func TestPasteGoesIntoTextBoxes(t *testing.T) {
 
 func TestBusyScreensSayWhatTheyAreDoing(t *testing.T) {
 	a := tall(t, New(testDeps()))
-	a, cmd := press(t, a, "2")
+	a, cmd := press(t, a, "3")
 	if !a.task.active || !strings.Contains(a.View().Content, "Reading the member list") {
 		t.Fatalf("opening the member list should show it's working:\n%s", a.View().Content)
 	}

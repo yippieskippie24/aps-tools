@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/yippieskippie24/aps-tools/internal/progress"
 )
 
 // This file is the low-level conversation with a Discourse forum's API.
@@ -79,18 +81,11 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 	if len(query) > 0 {
 		u += "?" + query.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	code, body, err := c.do(ctx, http.MethodGet, u, nil, 20<<20)
 	if err != nil {
-		return fmt.Errorf("couldn't build a request for Discourse: %w", err)
+		return err
 	}
-	c.authorize(req)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("couldn't reach %s — check your internet connection and the forum address", c.baseURL)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
-	if err := explainStatus(resp.StatusCode, body); err != nil {
+	if err := explainStatus(code, body); err != nil {
 		return err
 	}
 	if err := json.Unmarshal(body, out); err != nil {
@@ -106,28 +101,93 @@ func (c *Client) post(ctx context.Context, path string, body, out any) error {
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
+	code, answer, err := c.do(ctx, http.MethodPost, c.baseURL+path, data, 1<<20)
 	if err != nil {
-		return fmt.Errorf("couldn't build a request for Discourse: %w", err)
+		return err
 	}
-	c.authorize(req)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("couldn't reach %s — check your internet connection and the forum address", c.baseURL)
-	}
-	defer resp.Body.Close()
-	answer, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
+	if code == http.StatusForbidden || code == http.StatusUnauthorized {
 		return errors.New("the forum refused to make the change: the key may be read-only. Run: aps-tools setup discourse, and allow the tool to create invites")
 	}
-	if err := explainStatus(resp.StatusCode, answer); err != nil {
+	if err := explainStatus(code, answer); err != nil {
 		return err
 	}
 	if err := json.Unmarshal(answer, out); err != nil {
 		return fmt.Errorf("Discourse sent back something unexpected (is %s really the forum address?)", c.baseURL)
 	}
 	return nil
+}
+
+// maxWaits is how many times one request waits out the forum's rate limit
+// before giving up.
+const maxWaits = 4
+
+// do sends one request (data is the JSON body, or nil) and returns the
+// status code and up to limit bytes of the answer.
+//
+// The forum allows a user API key only about 20 requests a minute. When it
+// answers "too many requests" (HTTP 429), nothing was done, so it's safe to
+// wait as long as it asks (up to a minute), saying so on the app's progress
+// line, and send the same request again. That lets bulk work (like
+// following up on a dozen members) finish rather than fail part-way.
+func (c *Client) do(ctx context.Context, method, u string, data []byte, limit int64) (int, []byte, error) {
+	for waits := 0; ; waits++ {
+		var reader io.Reader
+		if data != nil {
+			reader = bytes.NewReader(data)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, u, reader)
+		if err != nil {
+			return 0, nil, fmt.Errorf("couldn't build a request for Discourse: %w", err)
+		}
+		c.authorize(req)
+		if data != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return 0, nil, ctx.Err()
+			}
+			return 0, nil, fmt.Errorf("couldn't reach %s — check your internet connection and the forum address", c.baseURL)
+		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, limit))
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusTooManyRequests || waits == maxWaits {
+			return resp.StatusCode, body, nil
+		}
+		wait := retryAfter(resp.Header.Get("Retry-After"), body)
+		progress.Reportf(ctx, "The forum asked the tool to slow down: waiting %d seconds", int(wait.Round(time.Second)/time.Second))
+		if err := pause(ctx, wait); err != nil {
+			return 0, nil, errors.New("Discourse is limiting how fast requests can be made — wait a minute and try again")
+		}
+	}
+}
+
+// retryAfter is how long the forum asked us to wait: its Retry-After
+// header, or the wait_seconds in its answer, kept between 1 and 60 seconds.
+func retryAfter(header string, body []byte) time.Duration {
+	secs, err := strconv.Atoi(strings.TrimSpace(header))
+	if err != nil {
+		var e struct {
+			Extras struct {
+				WaitSeconds int `json:"wait_seconds"`
+			} `json:"extras"`
+		}
+		_ = json.Unmarshal(body, &e)
+		secs = e.Extras.WaitSeconds
+	}
+	return time.Duration(min(max(secs, 1), 60)) * time.Second
+}
+
+// pause waits for d, or until ctx is cancelled. Tests replace it so they
+// don't really wait.
+var pause = func(ctx context.Context, d time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
+	}
 }
 
 // authorize adds the key headers for whichever kind of key this is.

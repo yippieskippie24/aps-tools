@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -25,19 +26,37 @@ type popItem struct {
 	run func(a App) (App, tea.Cmd)
 }
 
+// checkRow is one tick box in a popup, e.g. a member to include in a
+// follow-up.
+type checkRow struct {
+	label  string
+	detail string // a dimmer note after the label
+	on     bool
+	key    string // what the row stands for, e.g. their email
+}
+
 // popup is a box of choices over the current screen.
 type popup struct {
 	title string
 	sub   string   // a line under the title, e.g. their email
 	lines []string // already-styled lines between the title and the choices
-	items []popItem
-	pick  int
+	// checks are tick boxes shown above the items: space (or enter) ticks
+	// or unticks the highlighted one, a ticks or unticks them all. After
+	// each change, refresh (if set) updates the items, e.g. "Re-send to 9".
+	checks  []checkRow
+	refresh func(p *popup)
+	top     int // first tick box shown when they don't all fit
+	items   []popItem
+	// pick is the highlighted row: the tick boxes come first, then items.
+	pick int
 	// An optional text box (e.g. the reason for an override). When there's
 	// one, enter submits it to onInput instead of choosing an item.
-	input      *textinput.Model
-	inputErr   string
-	onInput    func(a App, value string) (App, tea.Cmd)
-	back       *popup // esc returns here; nil closes the popup
+	input    *textinput.Model
+	inputErr string
+	onInput  func(a App, value string) (App, tea.Cmd)
+	back     *popup // esc returns here; nil closes the popup
+	// onEsc, if set, is what esc does instead (e.g. stop emailing a list).
+	onEsc      func(a App) (App, tea.Cmd)
 	footerHint string // overrides the default key help inside the box
 }
 
@@ -49,7 +68,13 @@ func (a App) openPopup(p *popup) (App, tea.Cmd) {
 			p.back = a.popFrom // opened by a choice in another popup
 		}
 	}
-	p.pick = firstAvailable(p.items)
+	if p.refresh != nil {
+		p.refresh(p)
+	}
+	p.pick = len(p.checks) + firstAvailable(p.items)
+	if len(p.checks) > 0 {
+		p.pick = 0
+	}
 	a.pop = p
 	if p.input != nil {
 		return a, p.input.Focus()
@@ -87,6 +112,9 @@ func (a App) updatePopup(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	p := a.pop
 	key := msg.String()
 	if key == "esc" {
+		if p.onEsc != nil {
+			return p.onEsc(a)
+		}
 		a.pop = p.back
 		return a, nil
 	}
@@ -102,7 +130,8 @@ func (a App) updatePopup(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		p.inputErr = ""
 		return a, cmd
 	}
-	n := len(p.items)
+	nc := len(p.checks)
+	n := nc + len(p.items)
 	if n == 0 {
 		if key == "enter" {
 			a.pop = p.back
@@ -112,9 +141,14 @@ func (a App) updatePopup(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	move := func(step int) {
 		for i := 0; i < n; i++ {
 			p.pick = (p.pick + step + n) % n
-			if p.items[p.pick].off == "" {
+			if p.pick < nc || p.items[p.pick-nc].off == "" {
 				return
 			}
+		}
+	}
+	changed := func() {
+		if p.refresh != nil {
+			p.refresh(p)
 		}
 	}
 	switch key {
@@ -122,21 +156,108 @@ func (a App) updatePopup(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		move(-1)
 	case "down", "j", "tab":
 		move(1)
+	case "space", " ", "x":
+		if p.pick < nc {
+			p.checks[p.pick].on = !p.checks[p.pick].on
+			changed()
+		}
+	case "a":
+		if nc > 0 {
+			all := true
+			for _, c := range p.checks {
+				all = all && c.on
+			}
+			for i := range p.checks {
+				p.checks[i].on = !all
+			}
+			changed()
+		}
 	case "enter":
-		it := p.items[p.pick]
+		if p.pick < nc {
+			p.checks[p.pick].on = !p.checks[p.pick].on
+			changed()
+			return a, nil
+		}
+		it := p.items[p.pick-nc]
 		if it.off != "" || it.run == nil {
 			return a, nil
 		}
 		return a.runChoice(p, it)
 	default:
-		// 1–9 pick an item directly.
+		// 1–9 pick an item (not a tick box) directly.
 		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
-			if i := int(key[0] - '1'); i < n && p.items[i].off == "" && p.items[i].run != nil {
+			if i := int(key[0] - '1'); i < len(p.items) && p.items[i].off == "" && p.items[i].run != nil {
 				return a.runChoice(p, p.items[i])
 			}
 		}
 	}
 	return a, nil
+}
+
+// checksRoom is how many tick boxes fit in a popup at once.
+func (a App) checksRoom(p *popup) int {
+	return max(a.cardHeight()-8-len(p.lines)-len(p.items), 4)
+}
+
+// viewChecks draws a popup's tick boxes, scrolled so the highlighted one
+// shows, with "↑ 3 more" / "↓ 5 more" when they don't all fit.
+func (a App) viewChecks(p *popup, inner int) string {
+	s := a.styles
+	room := a.checksRoom(p)
+	nc := len(p.checks)
+	if nc <= room {
+		p.top = 0
+	} else {
+		room -= 2 // for the "more" lines
+		if p.pick < nc {
+			p.top = min(max(p.top, p.pick-room+1), p.pick)
+		}
+		p.top = min(max(p.top, 0), nc-room)
+	}
+	end := min(p.top+room, nc)
+	labelW := 0 // line the details up in a column
+	for _, c := range p.checks {
+		labelW = max(labelW, lipgloss.Width(c.label))
+	}
+	labelW = min(labelW, inner/2)
+	var lines []string
+	if p.top > 0 {
+		lines = append(lines, s.subtle.Render(fmt.Sprintf("  ↑ %d more", p.top)))
+	}
+	for i := p.top; i < end; i++ {
+		c := p.checks[i]
+		box := s.subtle.Render("[ ]")
+		if c.on {
+			box = lipgloss.NewStyle().Foreground(s.p.ok).Render("[✓]")
+		}
+		marker, style := "  ", s.text
+		if i == p.pick {
+			marker, style = "▸ ", lipgloss.NewStyle().Foreground(s.p.accent).Bold(true)
+		}
+		line := marker + box + " " + style.Width(labelW).Render(fitWidth(c.label, labelW))
+		if c.detail != "" {
+			room := inner - lipgloss.Width(line) - 2
+			if room > 8 {
+				line += "  " + s.subtle.Render(fitWidth(c.detail, room))
+			}
+		}
+		lines = append(lines, line)
+	}
+	if end < nc {
+		lines = append(lines, s.subtle.Render(fmt.Sprintf("  ↓ %d more", nc-end)))
+	}
+	return "\n" + strings.Join(lines, "\n")
+}
+
+// ticked returns the keys of the ticked rows, in order.
+func (p *popup) ticked() []string {
+	var out []string
+	for _, c := range p.checks {
+		if c.on {
+			out = append(out, c.key)
+		}
+	}
+	return out
 }
 
 // popupWidth is how wide popups are for a frame w wide.
@@ -168,9 +289,15 @@ func (a App) viewPopup(w int) string {
 			b.WriteString("\n" + lipgloss.NewStyle().Foreground(s.p.fail).Width(inner).Render(p.inputErr))
 		}
 	}
+	nc := len(p.checks)
+	if nc > 0 {
+		b.WriteString("\n")
+		b.WriteString(a.viewChecks(p, inner))
+	}
 	if len(p.items) > 0 {
 		b.WriteString("\n")
 		for i, it := range p.items {
+			i += nc
 			label := it.label
 			style := s.text
 			marker := "  "
@@ -192,6 +319,8 @@ func (a App) viewPopup(w int) string {
 	hint := p.footerHint
 	if hint == "" {
 		switch {
+		case nc > 0:
+			hint = "space tick or untick · a all or none · ↑/↓ move · enter choose · esc back"
 		case p.input != nil:
 			hint = "enter OK · esc back"
 		case len(p.items) == 0:
@@ -200,7 +329,7 @@ func (a App) viewPopup(w int) string {
 			hint = "↑/↓ choose · enter do it · esc back"
 		}
 	}
-	b.WriteString("\n\n" + s.subtle.Render(hint))
+	b.WriteString("\n\n" + s.subtle.Width(inner).Render(hint))
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(s.p.accent).

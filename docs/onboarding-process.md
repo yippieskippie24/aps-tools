@@ -54,7 +54,7 @@ gives you a page to copy it from: press **w** in the onboarding screen, or run
 
 ## Onboarding with the tool
 
-Run `aps-tools onboard alex@example.com`, or choose **2 Onboard a new member** in the app. It:
+Run `aps-tools onboard alex@example.com`, or choose **4 Onboard a new member** in the app. It:
 1. stops unless the member is vetted on the membership sheet;
 2. checks every system and shows the plan: ✓ nothing to do, + the tool will do it, □ do it by
    hand, … waiting on the member, ? couldn't check;

@@ -12,6 +12,7 @@ type action int
 const (
 	actionComingSoon action = iota // feature not built yet; explain when it arrives
 	actionMembers
+	actionFollowups
 	actionCheck
 	actionOnboard
 	actionLog
@@ -33,12 +34,13 @@ type menuItem struct {
 // and handle its action in App.choose (app.go).
 var menu = []menuItem{
 	{key: "1", title: "Members", desc: "Everyone on the sheet, grouped by what they still need", action: actionMembers},
-	{key: "2", title: "Check a member", desc: "Find anyone on the sheet by name or email, then check them everywhere", action: actionCheck},
-	{key: "3", title: "Onboard a new member", desc: "Set up a new member everywhere, then draft their welcome email", action: actionOnboard},
-	{key: "4", title: "Activity log", desc: "Every change the tool has made, newest first", action: actionLog},
-	{key: "5", title: "Test connections", desc: "Make sure the tool can reach every system", action: actionDoctor},
-	{key: "6", title: "Help", desc: "Keys, documentation, and where things are kept", action: actionHelp},
-	{key: "7", title: "Quit", desc: "Close the app", action: actionQuit},
+	{key: "2", title: "Follow-ups", desc: "Members only part-way set up: choose who, then follow up on them all at once", action: actionFollowups},
+	{key: "3", title: "Check a member", desc: "Find anyone on the sheet by name or email, then check them everywhere", action: actionCheck},
+	{key: "4", title: "Onboard a new member", desc: "Set up a new member everywhere, then draft their welcome email", action: actionOnboard},
+	{key: "5", title: "Activity log", desc: "Every change the tool has made, newest first", action: actionLog},
+	{key: "6", title: "Test connections", desc: "Make sure the tool can reach every system", action: actionDoctor},
+	{key: "7", title: "Help", desc: "Keys, documentation, and where things are kept", action: actionHelp},
+	{key: "8", title: "Quit", desc: "Close the app", action: actionQuit},
 }
 
 func (a App) viewHome(w int) string {

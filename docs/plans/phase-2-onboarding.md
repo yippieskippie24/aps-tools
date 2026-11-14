@@ -12,7 +12,7 @@ can be stopped and safely re-run at any point.
 
 ## 1. What onboarding a member will look like
 
-From the app (**2 Onboard a new member**) or the command line (`aps-tools onboard alex@example.com`):
+From the app (**4 Onboard a new member**) or the command line (`aps-tools onboard alex@example.com`):
 
 1. **Gate: the membership sheet.** The tool finds them on the sheet.
    - If **App vetted** isn't **Y**, it stops: "Not vetted yet, so wait for the membership chair."

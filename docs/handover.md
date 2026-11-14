@@ -65,7 +65,7 @@ To update later: `brew upgrade aps-tools`.
 | Settings (URLs, IDs) | `~/.config/aps-tools/config.toml` — run `aps-tools config path` to see it | Yes — no secrets in it |
 | API keys and tokens | macOS **Keychain Access** app (search `aps-tools`), **or** your 1Password, depending on `aps-tools setup secrets` | **No** |
 | Member email templates | `~/.config/aps-tools/*-email.md` (welcome, forum access help, …). Edit them in TextEdit (`aps-tools setup email` opens the folder) | Yes: no member data in them |
-| Activity log (every change the tool made) | `~/.config/aps-tools/activity.log`. See it in the app (**4 Activity log**), run `aps-tools log`, or open it in TextEdit | **No**: it names members. Hand it over to the next webmaster, but don't post it |
+| Activity log (every change the tool made) | `~/.config/aps-tools/activity.log`. See it in the app (**5 Activity log**), run `aps-tools log`, or open it in TextEdit | **No**: it names members. Hand it over to the next webmaster, but don't post it |
 
 ## 5. Getting help
 

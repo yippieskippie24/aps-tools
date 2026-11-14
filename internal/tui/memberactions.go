@@ -62,19 +62,6 @@ func (mv memberView) name() string {
 	return mv.person.Email
 }
 
-// shortName is a system's name for actions, e.g. "the forum".
-func shortName(sys check.SystemResult) string {
-	switch sys.ID {
-	case "cloudflare":
-		return "Cloudflare"
-	case "jira":
-		return "Jira"
-	case "discourse":
-		return "the forum"
-	}
-	return sys.System
-}
-
 // memberActions is the list of everything that can be done for mv, the
 // suggested action first among those available.
 func (a App) memberActions(mv memberView) []popItem {
@@ -93,7 +80,7 @@ func (a App) memberActions(mv memberView) []popItem {
 		var missing []string
 		for _, s := range mv.systems {
 			if s.State == connectors.StateMissing || s.State == connectors.StateProblem {
-				missing = append(missing, shortName(s))
+				missing = append(missing, s.Short())
 			}
 		}
 		it := popItem{label: "Onboard", run: func(a App) (App, tea.Cmd) { return a.planFor(mv, "") }}
@@ -395,6 +382,17 @@ func (a App) sentPopup(m emailOpenedMsg) *popup {
 		pop.lines = append(pop.lines, lipgloss.NewStyle().Foreground(a.styles.p.warn).Render("! Fill in after pasting: {{"+strings.Join(m.missing, "}}, {{")+"}}"))
 	}
 	email, kind := m.person.Email, m.kind
+	if a.queue != nil { // emailing a list, one by one
+		pop.title = fmt.Sprintf("%d of %d: ", a.queue.i+1, len(a.queue.people)) + pop.title
+		pop.onEsc = stopQueue
+		pop.footerHint = "↑/↓ choose · enter do it · esc stop"
+		pop.items = []popItem{
+			{label: "Yes, I sent it: next", suggested: true, run: func(a App) (App, tea.Cmd) { return a.recordSent(kind, email, who) }},
+			{label: "Not sent: skip to the next", run: func(a App) (App, tea.Cmd) { return a.queueAdvance(false) }},
+			{label: "Stop here", run: stopQueue},
+		}
+		return pop
+	}
 	pop.items = []popItem{
 		{label: "Yes, I sent it", suggested: true, run: func(a App) (App, tea.Cmd) { return a.recordSent(kind, email, who) }},
 		{label: "Not yet", run: func(a App) (App, tea.Cmd) {
@@ -611,12 +609,23 @@ func (a App) memberMsg(msg tea.Msg) (App, tea.Cmd) {
 		}
 		return a.recheckAs(msg.plan.Person, true)
 	case emailOpenedMsg:
+		if msg.err != nil && a.queue != nil {
+			a.queue.err = "Couldn't open it: " + msg.err.Error()
+			return a.queueNext()
+		}
 		if msg.err != nil {
 			a.flash = strings.TrimSpace(msg.resent + " Couldn't open the " + strings.ToLower(msg.kind.Name) + ": " + msg.err.Error())
 			return a, nil
 		}
 		return a.openPopup(a.sentPopup(msg))
 	case popEmailSentMsg:
+		if a.queue != nil {
+			if msg.err != nil {
+				a.queue.err = "Couldn't record it as sent: " + msg.err.Error()
+				return a.queueNext()
+			}
+			return a.queueAdvance(true)
+		}
 		if msg.err != nil {
 			a.flash = "Couldn't record it: " + msg.err.Error()
 		} else {

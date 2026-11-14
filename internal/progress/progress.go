@@ -21,6 +21,17 @@ func With(ctx context.Context, report func(step string)) context.Context {
 	return context.WithValue(ctx, key{}, report)
 }
 
+// Prefix returns a context whose reports start with prefix, e.g. "3 of 11 ·
+// Alex Example", so work done for many members at once still says whose
+// turn it is while each member's own steps report as usual.
+func Prefix(ctx context.Context, prefix string) context.Context {
+	f, ok := ctx.Value(key{}).(func(string))
+	if !ok || f == nil {
+		return ctx
+	}
+	return With(ctx, func(step string) { f(prefix + " · " + step) })
+}
+
 // Report says which step the work is on now, e.g. "Checking Jira".
 func Report(ctx context.Context, step string) {
 	if f, ok := ctx.Value(key{}).(func(string)); ok && f != nil {

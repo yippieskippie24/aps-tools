@@ -34,6 +34,7 @@ const (
 	screenMembers
 	screenEmail
 	screenLog
+	screenFollowups
 )
 
 // App is the whole application's state (the Bubble Tea "model").
@@ -91,6 +92,10 @@ type App struct {
 	// popFrom is the popup whose choice is running right now (see runChoice
 	// in popup.go); it's only set for that moment.
 	popFrom *popup
+	// followups is the Follow-ups screen (followupscreen.go).
+	followups followupsView
+	// queue is a list of members being emailed one by one, if any.
+	queue *emailQueue
 
 	// checked keeps full check results from Check a member, by email, so
 	// the details pane can show every system (see checkscreen.go).
@@ -243,6 +248,11 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a, cmd, _ := a.onboardMsg(msg)
 		return a, cmd
 
+	case followupDoneMsg:
+		return a.followupMsg(msg)
+	case groupOpenedMsg, groupSentMsg:
+		return a.groupMsg(msg)
+
 	case tea.PasteMsg:
 		if a.pop != nil && a.pop.input != nil {
 			var cmd tea.Cmd
@@ -280,6 +290,8 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.updateEmail(msg)
 		case screenLog:
 			return a.updateLog(msg)
+		case screenFollowups:
+			return a.updateFollowups(msg)
 		}
 	}
 	return a, nil
@@ -317,6 +329,8 @@ func (a App) choose(item menuItem) (tea.Model, tea.Cmd) {
 	case actionMembers:
 		a.back = screenHome
 		return a.openMembers()
+	case actionFollowups:
+		return a.openFollowups()
 	case actionCheck:
 		a.back = screenHome
 		return a.openCheck()
@@ -408,6 +422,8 @@ func (a App) screenContent(w int) (body, keys string) {
 		return a.viewEmail(w), a.emailKeys()
 	case screenLog:
 		return a.viewLog(w), a.logKeys()
+	case screenFollowups:
+		return a.viewFollowups(w), a.followupKeys()
 	}
 	return "", ""
 }

@@ -15,3 +15,13 @@ func TestReport(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 }
+
+func TestPrefix(t *testing.T) {
+	var got []string
+	ctx := With(context.Background(), func(s string) { got = append(got, s) })
+	Report(Prefix(ctx, "2 of 5 · Alex"), "Checking Jira")
+	Report(Prefix(context.Background(), "ignored"), "nobody listening")
+	if len(got) != 1 || got[0] != "2 of 5 · Alex · Checking Jira" {
+		t.Errorf("got %v", got)
+	}
+}

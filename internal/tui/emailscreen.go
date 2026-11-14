@@ -10,6 +10,7 @@ import (
 
 	"github.com/yippieskippie24/aps-tools/internal/activity"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
+	"github.com/yippieskippie24/aps-tools/internal/followup"
 	"github.com/yippieskippie24/aps-tools/internal/onboard"
 	"github.com/yippieskippie24/aps-tools/internal/progress"
 	"github.com/yippieskippie24/aps-tools/internal/welcome"
@@ -139,25 +140,14 @@ func resendVerification(ctx context.Context, conns []connectors.Connector, email
 	if logErr != nil {
 		return "✗ Didn't re-send the verification email: the activity log can't be written (" + logErr.Error() + ")."
 	}
-	for _, c := range conns {
-		r, ok := c.(connectors.VerificationResender)
-		if !ok || len(c.Missing()) > 0 {
-			continue
-		}
-		did, err := r.ResendVerification(ctx, email)
-		entry := activity.Entry{Member: email, System: c.Name(), OK: err == nil, What: did}
-		if err != nil {
-			entry.What = "Re-send verification email: " + err.Error()
-		}
-		if lerr := log.Add(entry); lerr != nil {
-			return "! " + did + " (but it couldn't be recorded in the activity log: " + lerr.Error() + ")"
-		}
-		if err != nil {
-			return "✗ Couldn't re-send the verification email: " + err.Error()
-		}
-		return "✓ " + did
+	did, err := followup.ResendOne(ctx, conns, email, log)
+	switch {
+	case err != nil && did != "":
+		return "! " + err.Error() // done, but not logged
+	case err != nil:
+		return "✗ Couldn't re-send the verification email: " + err.Error()
 	}
-	return "✗ Couldn't re-send the verification email: the mailing list (Cloudflare) isn't connected."
+	return "✓ " + did
 }
 
 // recordEmailSent writes the webmaster's "yes, I sent it" to the log.

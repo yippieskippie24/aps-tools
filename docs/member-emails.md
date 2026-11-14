@@ -50,6 +50,14 @@ next time it's used.
   Pick one and press **Enter**. Once it has opened in your browser, a popup asks whether you sent
   it: **Yes, I sent it** records it in the activity log. **Esc** takes you back a step.
 - **In the app, while onboarding:** **w** is a shortcut for the welcome email.
+- **To several members:** on **Follow-ups**, choose a follow-up and tick who to include, then:
+  - **Email … together** sends **one** email with everyone in **Bcc**, so members don't see each
+    other's addresses, and greets them "Hello everyone,". It's only offered for an email with
+    nothing personal in it: today, **Verify your email**. Emails with a member's own forum invite
+    link (Welcome, New forum invite), username or address can't be shared, so the tool refuses
+    them if your template uses `{{FORUM_INVITE_LINK}}`, `{{FORUM_USERNAME}}` or `{{MEMBER_EMAIL}}`.
+  - **Email … one by one** opens each member's email in turn, followed by "Did you send it?" and
+    the next. Skip anyone, or press **Esc** to stop.
 - **From the command line:** `aps-tools email <which> alex@example.com`, e.g.
   `aps-tools email forum-access alex@example.com`.
 

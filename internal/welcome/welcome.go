@@ -190,7 +190,10 @@ func Values(cfg *config.Config, p connectors.Person) map[string]string {
 
 // Email is one member's welcome email, ready to copy.
 type Email struct {
-	To      string
+	To string
+	// Bcc is set for an email to several members at once (see ForGroup):
+	// they go in Bcc so they don't see each other's addresses.
+	Bcc     []string
 	Subject string
 	// HTML is the body with inline styles (what Mail keeps when pasting).
 	HTML string
@@ -424,7 +427,8 @@ func plain(s string, values map[string]string) string {
 // ("cloudflare", "discourse"). It's only a suggestion: the webmaster
 // chooses.
 //   - not passed by the sheet yet → Application in progress
-//   - no forum account, and not on the mailing list either → Welcome email
+//   - no forum account (perhaps an invite not used yet), and not set up on
+//     the mailing list either → Welcome email (e.g. just onboarded)
 //   - no forum account, but on the mailing list → New forum invite
 //   - hasn't clicked Cloudflare's email → Verify your email
 //   - otherwise (they have a forum account) → Forum access help
@@ -434,7 +438,7 @@ func Suggest(sheet connectors.State, systems map[string]connectors.State) Kind {
 	switch {
 	case sheet != connectors.StateOK:
 		return ApplicationInProgress
-	case haveForum && forum == connectors.StateMissing:
+	case haveForum && (forum == connectors.StateMissing || forum == connectors.StatePending):
 		if haveMail && mail == connectors.StateOK {
 			return ForumInvite
 		}

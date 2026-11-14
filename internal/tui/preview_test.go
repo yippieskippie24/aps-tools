@@ -14,6 +14,7 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/check"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/doctor"
+	"github.com/yippieskippie24/aps-tools/internal/followup"
 	"github.com/yippieskippie24/aps-tools/internal/onboard"
 	"github.com/yippieskippie24/aps-tools/internal/roster"
 )
@@ -143,6 +144,30 @@ func TestWritePreviews(t *testing.T) {
 		reason, _ := wide.openPopup(wide.reasonPopup(reasonMV))
 		reason.pop.input.SetValue("Paid at the meeting; the chair will update the sheet")
 		write("popup-override", reason)
+		// Follow-ups: the screen, the tick boxes (one unticked), the results
+		// and emailing them one by one.
+		fu := wide
+		fu.screen = screenFollowups
+		write("followups", fu)
+		lists := fu.followupLists()
+		ticks, _ := fu.openPopup(fu.followupPopup(lists[1]))
+		ticks.pop.checks[0].on, ticks.pop.checks[2].on = true, true // Blair left out
+		ticks.pop.refresh(ticks.pop)
+		ticks.pop.pick = 1
+		write("followups-ticks", ticks)
+		resent, _ := fu.openPopup(fu.resultsPopup(followupDoneMsg{kind: followup.Unverified, results: []followup.Result{
+			{Person: lists[0].Members[0].Person, OK: true, What: "Cloudflare is sending them a new verification email."},
+			{Person: lists[0].Members[1].Person, OK: true, What: "Cloudflare is sending them a new verification email."},
+		}}))
+		write("followups-resent", resent)
+		results, _ := fu.openPopup(fu.resultsPopup(followupDoneMsg{kind: followup.NeedsSetup, results: []followup.Result{
+			{Person: lists[1].Members[0].Person, OK: true, What: "Added them as a Jira customer; created a personal forum invite (expires Feb 11, 2027)."},
+			{Person: lists[1].Members[2].Person, What: "Failed: Discourse forum: the forum refused to make the change."},
+		}}))
+		write("followups-results", results)
+		queued, _ := fu.startQueue(followup.NeedsSetup, []connectors.Person{lists[1].Members[0].Person, lists[1].Members[2].Person})
+		write("followups-queue", queued)
+
 		flashed := wide
 		flashed.flash = "✓ Onboarded Alex Example: 1 change made. Next: Email them → Welcome email."
 		write("members-flash", flashed)
@@ -223,6 +248,7 @@ func membersPreview(a App) App {
 	r := roster.Roster{
 		Directory: "Membership Google Sheet",
 		Systems:   []string{"Mailing list (Cloudflare)", "Jira Service Management", "Discourse forum"},
+		SystemIDs: []string{"cloudflare", "jira", "discourse"},
 		CheckedAt: time.Now().Add(-3 * time.Minute),
 		Entries: []roster.Entry{
 			entry("Alex", "Example", roster.NeedsSetup, ok, sys(unverified, st(connectors.StateMissing, "Not a customer on the service desk."), noForum)),

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"slices"
 	"sort"
 	"strings"
 
@@ -89,6 +90,69 @@ func (k Kind) ForMember(cfg *config.Config, p connectors.Person, link connectors
 // ErrNoInvite means the member has neither a forum account nor a pending
 // invite, so there's no link for their welcome email yet.
 var ErrNoInvite = errors.New("they don't have a forum invite yet")
+
+// Personal are the placeholders that are different for every member and
+// can't be shared, e.g. a single-use forum invite link. An email whose
+// template uses any of them must go to each member separately.
+var Personal = []string{"FORUM_INVITE_LINK", "FORUM_USERNAME", "MEMBER_EMAIL"}
+
+// GroupGreeting replaces {{FIRST_NAME}} in an email to several members,
+// e.g. "Hello everyone,".
+const GroupGreeting = "everyone"
+
+// ErrNotGroupable means an email has something personal in it, so it
+// can't go to several members at once.
+var ErrNotGroupable = errors.New("this email has something personal in it")
+
+// PersonalIn lists the personal placeholders (see Personal) that a
+// template uses.
+func PersonalIn(tmpl string) []string {
+	var lines []string
+	for _, l := range strings.Split(tmpl, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(l), "#") { // skip notes to the webmaster
+			lines = append(lines, l)
+		}
+	}
+	var out []string
+	for _, m := range placeholder.FindAllStringSubmatch(strings.Join(lines, "\n"), -1) {
+		if slices.Contains(Personal, m[1]) && !slices.Contains(out, m[1]) {
+			out = append(out, m[1])
+		}
+	}
+	return out
+}
+
+// ForGroup builds ONE email of kind k for several members, to send with
+// everyone in Bcc (so nobody sees anyone else's address) and the webmaster
+// in To. It works only for an email with nothing personal in it (see
+// Personal): for anything else it returns an error wrapping
+// ErrNotGroupable, and each member needs their own email. {{FIRST_NAME}}
+// becomes "everyone".
+func (k Kind) ForGroup(cfg *config.Config, people []connectors.Person) (e Email, created bool, err error) {
+	tmpl, created, err := k.LoadTemplate()
+	if err != nil {
+		return Email{}, false, err
+	}
+	if personal := PersonalIn(tmpl); len(personal) > 0 {
+		return Email{}, created, fmt.Errorf("%w ({{%s}}), so it has to go to each member separately", ErrNotGroupable, strings.Join(personal, "}}, {{"))
+	}
+	values := Values(cfg, connectors.Person{})
+	values["FIRST_NAME"] = GroupGreeting
+	e, err = Render(tmpl, cfg.Webmaster.Email, values)
+	if err != nil {
+		return e, created, err
+	}
+	e.Kind = k
+	for _, p := range people {
+		e.Bcc = append(e.Bcc, p.Email)
+	}
+	note := fmt.Sprintf("One email to %d members. Put the addresses in Bcc, not To, so they don't see each other's addresses (in Mail: View → Bcc Address Field).", len(people))
+	if e.To == "" {
+		note += " Put your own address in To (run aps-tools setup webmaster so the tool fills it in)."
+	}
+	e.Notes = append(e.Notes, note)
+	return e, created, nil
+}
 
 // InviteLink asks the forum connector (if there is one among conns) for the
 // link to put in the member's welcome email. It returns ErrNoInvite when

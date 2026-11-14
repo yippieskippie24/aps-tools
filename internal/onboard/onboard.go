@@ -34,8 +34,10 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/progress"
 )
 
-// stepTimeout limits how long any one system may take to answer.
-const stepTimeout = 30 * time.Second
+// stepTimeout limits how long any one system may take to answer. Each
+// request has its own shorter limit; this allows for waiting out a
+// system's rate limit (the forum's, during bulk follow-ups).
+const stepTimeout = 2 * time.Minute
 
 // Kind says what a step needs.
 type Kind int

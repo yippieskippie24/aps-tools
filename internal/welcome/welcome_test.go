@@ -1,6 +1,7 @@
 package welcome
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,6 +194,8 @@ func TestSuggest(t *testing.T) {
 		{"brand new", ok, missing, missing, Welcome},
 		{"onboarding half done", ok, pending, missing, Welcome},
 		{"invite expired", ok, ok, missing, ForumInvite},
+		{"invite not used yet", ok, ok, pending, ForumInvite},
+		{"just onboarded", ok, pending, pending, Welcome},
 		{"hasn't verified", ok, pending, ok, VerifyEmail},
 		{"all set, can't get in", ok, ok, ok, ForumAccess},
 	}
@@ -212,5 +215,35 @@ func TestForumAccessForSomeoneWithoutAnAccount(t *testing.T) {
 	}
 	if len(e.Notes) != 1 || !strings.Contains(e.Notes[0], "don't have an account") || e.Kind.ID != ForumAccess.ID {
 		t.Errorf("notes = %v", e.Notes)
+	}
+}
+
+// Only an email with nothing personal in it can go to several members at
+// once; it goes to them in Bcc, greeting "everyone".
+func TestForGroup(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := &config.Config{Webmaster: config.Webmaster{Name: "Robin Example", Email: "webmaster@example.com"}}
+	people := []connectors.Person{{Email: "amy@example.com", FirstName: "Amy"}, {Email: "bo@example.com", FirstName: "Bo"}}
+
+	e, _, err := VerifyEmail.ForGroup(cfg, people)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.To != "webmaster@example.com" || strings.Join(e.Bcc, ",") != "amy@example.com,bo@example.com" {
+		t.Errorf("to %q, bcc %v", e.To, e.Bcc)
+	}
+	if !strings.Contains(e.Text, "Hello everyone,") || strings.Contains(e.Text, "Amy") {
+		t.Errorf("text:\n%s", e.Text)
+	}
+	page, err := Page(e, "2 members")
+	if err != nil || !strings.Contains(string(page), "Copy Bcc") || !strings.Contains(string(page), "amy@example.com, bo@example.com") {
+		t.Errorf("page should offer the Bcc list (err %v)", err)
+	}
+
+	// Invite links are personal: those emails must go one by one.
+	for _, k := range []Kind{Welcome, ForumInvite, ForumAccess, NotGettingEmails} {
+		if _, _, err := k.ForGroup(cfg, people); !errors.Is(err, ErrNotGroupable) {
+			t.Errorf("%s: err = %v, want ErrNotGroupable", k.ID, err)
+		}
 	}
 }

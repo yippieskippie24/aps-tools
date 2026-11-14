@@ -131,7 +131,10 @@ become automatic as they're built ([decision 0011](decisions/0011-onboarding-pla
 ### Phase 3 — Keeping on top of things
 - **Bulk audit:** compare the Google Sheet against every system and list the gaps. ✅ **Built
   early** as the app's **Members** screen ([decision 0013](decisions/0013-members-screen-bulk-checks.md)).
-- **Follow-ups:** flag members who were invited/added but never finished activating.
+- **Follow-ups:** flag members who were invited/added but never finished activating. ✅ **Built
+  early** as the app's **Follow-ups** screen and `aps-tools followups`: choose who's included, then
+  re-send Cloudflare's email or onboard them all, and email each one
+  ([decision 0019](decisions/0019-bulk-follow-ups.md)).
 - **Offboarding:** remove a lapsed member everywhere.
 - **Board changes:** half the board is elected each July. Update the role mailing lists
   (board-members@, treasurer@, …) and the forum's board group, with a preview. Needed before July

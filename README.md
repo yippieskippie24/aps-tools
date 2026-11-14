@@ -41,6 +41,7 @@ go install github.com/yippieskippie24/aps-tools/cmd/aps-tools@latest
 aps-tools                          # open the interactive app
 aps-tools check alex@example.com   # check a member in every system
 aps-tools onboard alex@example.com # plan (and do) a new member's setup
+aps-tools followups                # members only part-way set up, and what to do
 aps-tools email welcome alex@example.com  # open an email, ready to copy into Mail
 aps-tools email --help             # list every kind of member email
 aps-tools log                      # see what the tool has changed
@@ -59,11 +60,16 @@ left and the highlighted member's details are on the right, with the suggested n
 **Enter** on anyone for a popup of everything you can do for them: onboard them (or override the
 sheet, with a reason), email them, re-send Cloudflare's verification email, check every system, or
 see their activity. Confirmations and choices appear in popups too, and the result shows on the
-bottom line. To look up just one person, use **2 Check a member**: it lists everyone on the sheet
+bottom line. **2 Follow-ups** gathers members who are only part-way set up: those who haven't
+verified their email, those who need setting up (usually on the forum), and those who haven't used
+their forum invite. Choose one and tick who to include (nobody is ticked to start), and the tool does
+the rest one member at a time (re-sending Cloudflare's email, or onboarding them). Then it helps you
+email them: as one email with everyone in Bcc where the email has nothing personal in it (Verify
+your email), otherwise one by one. To look up just one person, use **3 Check a member**: it lists everyone on the sheet
 straight away (only the sheet is read), sorted by name (←/→ sorts by last name or email). Type
 part of a name to narrow it, ↑/↓ to highlight someone, and Enter for the same popup. You can also
-type someone's full email address to act on a person who isn't on the sheet. **3 Onboard a new
-member** plans and does a member's setup step by step. **4 Activity log** shows every change the
+type someone's full email address to act on a person who isn't on the sheet. **4 Onboard a new
+member** plans and does a member's setup step by step. **5 Activity log** shows every change the
 tool has made.
 
 ## Documentation

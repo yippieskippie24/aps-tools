@@ -38,12 +38,14 @@
   {{end}}
   <div class="row"><span class="label">To</span><span class="value" id="to">{{.Email.To}}</span>
     <button onclick="copyText('to', this)">Copy To</button></div>
+  {{if .Email.Bcc}}<div class="row"><span class="label">Bcc</span><span class="value" id="bcc">{{range $i, $a := .Email.Bcc}}{{if $i}}, {{end}}{{$a}}{{end}}</span>
+    <button onclick="copyText('bcc', this)">Copy Bcc</button></div>{{end}}
   <div class="row"><span class="label">Subject</span><span class="value" id="subject">{{.Email.Subject}}</span>
     <button onclick="copyText('subject', this)">Copy subject</button></div>
   <div class="row"><span class="label">Body</span><button onclick="copyRich('body', this)">Copy body</button></div>
   <div class="email-body" id="body">{{.Body}}</div>
   <ol class="steps">
-    <li>In Mail, start a new email and paste the To, Subject and Body.</li>
+    <li>In Mail, start a new email and paste the To{{if .Email.Bcc}}, Bcc{{end}}, Subject and Body.</li>
     <li>Fill in anything highlighted, read it over, and send it.</li>
     <li>Back in aps-tools, answer “Sent?” so it's recorded in the activity log.</li>
   </ol>

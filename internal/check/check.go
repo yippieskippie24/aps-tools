@@ -20,8 +20,10 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/progress"
 )
 
-// systemTimeout limits how long we wait for any one system to answer.
-const systemTimeout = 20 * time.Second
+// systemTimeout limits how long we wait for any one system to answer. Each
+// request has its own shorter limit; this allows for a system that asks
+// the tool to slow down (the forum does, during bulk follow-ups) and waits.
+const systemTimeout = 2 * time.Minute
 
 // SystemResult is one system's part of the report.
 type SystemResult struct {
@@ -31,6 +33,20 @@ type SystemResult struct {
 	ID string
 	// Status is what the system said about the member.
 	connectors.MemberStatus
+}
+
+// Short is the system's name for use in a sentence, e.g. "set up Jira and
+// the forum".
+func (r SystemResult) Short() string {
+	switch r.ID {
+	case "cloudflare":
+		return "Cloudflare"
+	case "jira":
+		return "Jira"
+	case "discourse":
+		return "the forum"
+	}
+	return r.System
 }
 
 // Report is the full answer for one member.

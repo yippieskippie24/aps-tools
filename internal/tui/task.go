@@ -96,7 +96,7 @@ func finishesTask(msg tea.Msg) bool {
 	switch msg.(type) {
 	case doctorDoneMsg, peopleDoneMsg, checkDoneMsg, rosterDoneMsg, memberRefreshedMsg,
 		planDoneMsg, stepDoneMsg, welcomeOpenedMsg, welcomeSentMsg, emailOpenedMsg, emailSentMsg,
-		popPlanMsg, popRunMsg, popEmailSentMsg, popResendMsg, popCheckedMsg:
+		popPlanMsg, popRunMsg, popEmailSentMsg, popResendMsg, popCheckedMsg, followupDoneMsg, groupOpenedMsg, groupSentMsg:
 		return true
 	}
 	return false

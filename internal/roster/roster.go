@@ -26,8 +26,9 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/progress"
 )
 
-// bulkTimeout limits how long one system may take to check everyone.
-const bulkTimeout = 90 * time.Second
+// bulkTimeout limits how long one system may take to check everyone,
+// including any wait for its rate limit.
+const bulkTimeout = 3 * time.Minute
 
 // oneByOne is how many members are checked at the same time in a system
 // that can't check in bulk.
