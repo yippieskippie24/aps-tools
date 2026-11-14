@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/yippieskippie24/aps-tools/internal/activity"
 	"github.com/yippieskippie24/aps-tools/internal/check"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/doctor"
@@ -134,6 +135,46 @@ func TestWritePreviews(t *testing.T) {
 			connectors.StateOK, map[string]connectors.State{"cloudflare": connectors.StatePending, "discourse": connectors.StateOK})
 		em.email.pick = 1
 		write("email", em)
+
+		people := a
+		people.screen = screenCheck
+		people.member = newMemberCheck(people.styles)
+		people.member.input.Focus()
+		vetted := connectors.MemberStatus{State: connectors.StateOK, Summary: "On the membership list, and their application is vetted."}
+		before := connectors.MemberStatus{State: connectors.StateOK, Summary: "On the membership list. They joined before \"App vetted\" was tracked."}
+		notVetted := connectors.MemberStatus{State: connectors.StatePending, Summary: "On the list, but \"App vetted\" isn't marked yet."}
+		person := func(first, last string) connectors.Person {
+			return connectors.Person{FirstName: first, LastName: last, Email: strings.ToLower(first+"."+last) + "@example.com"}
+		}
+		people.people = struct {
+			loading bool
+			err     string
+			entries []connectors.DirectoryEntry
+			at      time.Time
+		}{entries: []connectors.DirectoryEntry{
+			{Person: person("Alex", "Example"), Status: vetted},
+			{Person: person("Blair", "Sample"), Status: before},
+			{Person: person("Casey", "Test"), Status: notVetted},
+			{Person: person("Drew", "Demo"), Status: vetted},
+		}, at: time.Now().Add(-2 * time.Minute)}
+		write("check-list", people)
+		m, _ = people.Update(tea.WindowSizeMsg{Width: 130, Height: 28})
+		write("check-list-wide", m.(App))
+
+		lg := a
+		lg.screen = screenLog
+		lg.log = newLogView(lg.styles)
+		lg.log.path = "~/.config/aps-tools/activity.log"
+		day := time.Date(2026, 11, 13, 15, 4, 0, 0, time.Local)
+		lg.log.entries = []activity.Entry{
+			{Time: day.Add(9 * time.Minute), Member: "drew.demo@example.com", System: "Verify your email", OK: true, What: "Sent by the webmaster (confirmed in the tool)"},
+			{Time: day.Add(8 * time.Minute), Member: "drew.demo@example.com", System: "Mailing list (Cloudflare)", OK: true, What: "Cloudflare is sending them a new verification email (their unverified address was removed and added again)."},
+			{Time: day.Add(2 * time.Minute), Member: "alex.example@example.com", System: "Discourse forum", OK: true, What: "Created a personal invite link (no email from the forum); it expires Feb 11, 2027."},
+			{Time: day.Add(-26 * time.Hour), Member: "casey.test@example.com", System: "Mailing list (Cloudflare)", OK: false, What: "Re-send verification email: their address is already verified, so there's nothing to re-send"},
+		}
+		write("log", lg)
+		m, _ = lg.Update(tea.WindowSizeMsg{Width: 130, Height: 28})
+		write("log-wide", m.(App))
 
 		help := a
 		help.screen = screenHelp

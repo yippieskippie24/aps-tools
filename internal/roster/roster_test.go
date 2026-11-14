@@ -173,3 +173,34 @@ func TestRefreshOneMember(t *testing.T) {
 		t.Errorf("after refresh: %v", r.Entries[0].Group)
 	}
 }
+
+func TestDirectoryChecksOnlyTheSheet(t *testing.T) {
+	sheet := fakeSheet{entries: []connectors.DirectoryEntry{
+		{Person: person("Zoe", "Zed"), Status: ok},
+		{Person: person("Amy", "Able"), Status: pending},
+	}}
+	var single, bulks int32
+	mail := bulkSystem{fakeSystem{name: "Mail", single: &single, bulks: &bulks}}
+	people, err := Directory(context.Background(), []connectors.Connector{sheet, mail})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if single+bulks != 0 {
+		t.Error("the directory must not check other systems")
+	}
+	if len(people) != 2 || people[0].Person.FirstName != "Amy" {
+		t.Errorf("people = %+v", people)
+	}
+	if _, err := Directory(context.Background(), nil); !errors.Is(err, ErrNoSheet) {
+		t.Errorf("no sheet: %v", err)
+	}
+}
+
+func TestMatches(t *testing.T) {
+	p := connectors.Person{FirstName: "Jamie", LastName: "Bowman", Email: "jb@example.com"}
+	for q, want := range map[string]bool{"": true, "jam": true, "JAM bow": true, "jb@": true, "jamie smith": false, "zed": false} {
+		if Matches(p, q) != want {
+			t.Errorf("Matches(%q) = %v", q, !want)
+		}
+	}
+}

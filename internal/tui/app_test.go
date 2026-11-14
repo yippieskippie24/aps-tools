@@ -85,9 +85,9 @@ func TestComingSoonShowsAMessage(t *testing.T) {
 
 func TestTestConnectionsRunsDoctorAndShowsResults(t *testing.T) {
 	a := New(testDeps())
-	a, cmd := press(t, a, "4")
+	a, cmd := press(t, a, "5")
 	if a.screen != screenDoctor || !a.checking || cmd == nil {
-		t.Fatalf("pressing 4 should start a connection test (screen=%v checking=%v)", a.screen, a.checking)
+		t.Fatalf("pressing 5 should start a connection test (screen=%v checking=%v)", a.screen, a.checking)
 	}
 
 	// Simulate the background check finishing.
@@ -216,28 +216,25 @@ func TestCheckScreenRunsAndShowsReport(t *testing.T) {
 	}
 }
 
-// runBatch runs a command and, if it is a batch, each command inside it,
-// skipping timers so the test doesn't wait.
+// runBatch runs a command and, if it is a batch (even a batch inside a
+// batch), each command inside it, skipping timers so the test doesn't wait.
 func runBatch(cmd tea.Cmd) []tea.Msg {
 	if cmd == nil {
 		return nil
 	}
 	msg := cmd()
-	if batch, ok := msg.(tea.BatchMsg); ok {
-		var out []tea.Msg
-		for _, c := range batch {
-			if c == nil {
-				continue
-			}
-			if m := c(); m != nil {
-				if _, tick := m.(spinTickMsg); !tick {
-					out = append(out, m)
-				}
-			}
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		if _, tick := msg.(spinTickMsg); tick || msg == nil {
+			return nil
 		}
-		return out
+		return []tea.Msg{msg}
 	}
-	return []tea.Msg{msg}
+	var out []tea.Msg
+	for _, c := range batch {
+		out = append(out, runBatch(c)...)
+	}
+	return out
 }
 
 // fakeSheet is a pretend membership sheet for onboarding tests.
@@ -435,6 +432,20 @@ func TestFillsTheWindow(t *testing.T) {
 		if widest != size.Width-1 {
 			t.Errorf("%dx%d: widest line is %d, want the window less the right margin", size.Width, size.Height, widest)
 		}
+	}
+}
+
+func TestFooterNeverWraps(t *testing.T) {
+	a := New(testDeps())
+	m, _ := a.Update(tea.WindowSizeMsg{Width: 60, Height: 24})
+	a = m.(App)
+	a, _ = a.openCheck()
+	footer := a.checkKeys()
+	if w := lipgloss.Width(footer); w > a.frameWidth() {
+		t.Errorf("footer is %d wide in a %d-wide frame", w, a.frameWidth())
+	}
+	if !strings.Contains(footer, "search") {
+		t.Error("the most important keys should still show")
 	}
 }
 
@@ -776,5 +787,143 @@ func TestVerifyEmailOffersToResend(t *testing.T) {
 				t.Errorf("y: notice %q", a.email.notice)
 			}
 		}
+	}
+}
+
+func TestCheckScreenListsMembersQuickly(t *testing.T) {
+	calls := 0
+	deps := onboardDeps(t, true, &calls)
+	deps.Connectors = func(*config.Config, secrets.Store) []connectors.Connector {
+		return []connectors.Connector{rosterSheet{fakeSheet{connectors.MemberStatus{State: connectors.StateOK, Summary: "Vetted."}}}, fakeList{&calls}}
+	}
+	a := tall(t, New(deps))
+	a, cmd := press(t, a, "2")
+	if a.screen != screenCheck || !a.people.loading {
+		t.Fatal("2 should open Check a member and read the member list")
+	}
+	a = settle(t, a, cmd)
+	view := a.View().Content
+	for _, want := range []string{"Everyone 2", "Ready 1", "Not ready 1", "Amy Able", "Ned New"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("list is missing %q", want)
+		}
+	}
+
+	// Typing narrows the list; tab switches group.
+	a = typeText(t, a, "ned")
+	if rows := a.checkRows(); len(rows) != 1 || rows[0].Person.Email != "ned@example.com" {
+		t.Fatalf("search: %+v", rows)
+	}
+	a, _ = press(t, a, "tab") // Ready: Ned isn't
+	if len(a.checkRows()) != 0 {
+		t.Error("Ned isn't ready, so the Ready tab should be empty")
+	}
+	a, _ = press(t, a, "tab")
+	a, _ = press(t, a, "tab") // back to Everyone
+
+	// enter checks the highlighted member; esc comes back with the search kept.
+	a, cmd = press(t, a, "enter")
+	if !a.member.running || a.member.who != "Ned New" {
+		t.Fatalf("enter should check Ned (running %v, who %q)", a.member.running, a.member.who)
+	}
+	a = settle(t, a, cmd)
+	if a.member.report == nil || a.member.report.Email != "ned@example.com" {
+		t.Fatalf("report = %+v", a.member.report)
+	}
+	a, _ = press(t, a, "esc")
+	if a.screen != screenCheck || a.member.report != nil || a.member.input.Value() != "ned" {
+		t.Errorf("esc should return to the list with the search kept (screen %v, search %q)", a.screen, a.member.input.Value())
+	}
+	// The list is kept: reopening the screen doesn't read the sheet again.
+	a, _ = press(t, a, "esc")
+	a, _ = press(t, a, "esc")
+	a, _ = press(t, a, "2")
+	if a.people.loading {
+		t.Error("the member list should be reused, not read again")
+	}
+}
+
+func TestActivityLogScreen(t *testing.T) {
+	deps := onboardDeps(t, true, new(int))
+	path, _ := deps.ConfigPath()
+	log := activity.Open(filepath.Join(filepath.Dir(path), activity.FileName))
+	_ = log.Add(activity.Entry{Member: "alex@example.com", System: "Discourse forum", OK: true, What: "Created a personal invite link."})
+	_ = log.Add(activity.Entry{Member: "sam@example.com", System: "Mailing list (Cloudflare)", OK: false, What: "Re-send verification email: too many requests"})
+
+	a := tall(t, New(deps))
+	a, _ = press(t, a, "4")
+	if a.screen != screenLog || len(a.log.entries) != 2 {
+		t.Fatalf("4 should open the activity log: screen %v, %d entries", a.screen, len(a.log.entries))
+	}
+	if a.log.entries[0].Member != "sam@example.com" {
+		t.Error("newest should be first")
+	}
+	view := a.View().Content
+	for _, want := range []string{"Created a personal invite link.", "too many requests", "alex@example.com"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("log screen is missing %q", want)
+		}
+	}
+
+	a, _ = press(t, a, "/")
+	a = typeText(t, a, "alex")
+	a, _ = press(t, a, "enter")
+	if rows := a.logRows(); len(rows) != 1 || rows[0].Member != "alex@example.com" {
+		t.Errorf("filter: %+v", rows)
+	}
+	a, _ = press(t, a, "esc")
+	if a.screen != screenLog || len(a.logRows()) != 2 {
+		t.Error("first esc should clear the filter")
+	}
+	a, _ = press(t, a, "esc")
+	if a.screen != screenHome {
+		t.Error("second esc should go home")
+	}
+}
+
+func TestCheckListSorting(t *testing.T) {
+	a := tall(t, New(testDeps()))
+	a.screen = screenCheck
+	ok := connectors.MemberStatus{State: connectors.StateOK}
+	a.people.entries = []connectors.DirectoryEntry{
+		{Person: connectors.Person{FirstName: "Zoe", LastName: "Able", Email: "b@example.com"}, Status: ok},
+		{Person: connectors.Person{FirstName: "Amy", LastName: "Young", Email: "c@example.com"}, Status: ok},
+		{Person: connectors.Person{FirstName: "Mia", LastName: "Mills", Email: "a@example.com"}, Status: ok},
+	}
+	order := func() string {
+		var names []string
+		for _, e := range a.checkRows() {
+			names = append(names, e.Person.FirstName)
+		}
+		return strings.Join(names, ",")
+	}
+	if got := order(); got != "Amy,Mia,Zoe" {
+		t.Errorf("default (name): %s", got)
+	}
+	a, _ = press(t, a, "right")
+	if got := order(); got != "Zoe,Mia,Amy" {
+		t.Errorf("last name: %s", got)
+	}
+	a, _ = press(t, a, "right")
+	if got := order(); got != "Mia,Zoe,Amy" {
+		t.Errorf("email: %s", got)
+	}
+	if !strings.Contains(a.View().Content, "Email ▲") {
+		t.Error("the sorted column should be marked")
+	}
+	a, _ = press(t, a, "right")
+	if got := order(); got != "Amy,Mia,Zoe" {
+		t.Errorf("→ should wrap round to name: %s", got)
+	}
+	a, _ = press(t, a, "left")
+	if checkSorts[a.peopleSort] != "Email" {
+		t.Errorf("← should go back to email, got %s", checkSorts[a.peopleSort])
+	}
+
+	// ↓ highlights the next member; enter checks the highlighted one.
+	a, _ = press(t, a, "down")
+	a, _ = press(t, a, "enter")
+	if a.member.who != "Zoe Able" {
+		t.Errorf("enter checked %q, want the highlighted Zoe Able", a.member.who)
 	}
 }

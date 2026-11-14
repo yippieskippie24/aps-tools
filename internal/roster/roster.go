@@ -248,6 +248,44 @@ func Load(ctx context.Context, conns []connectors.Connector) (Roster, error) {
 	return r, nil
 }
 
+// Directory lists everyone on the membership sheet, with the sheet's
+// verdict on each, WITHOUT checking any other system: one read of the
+// sheet, so it's quick. It's for finding a member (e.g. to check them)
+// when you don't know their email address. Sorted by last name. READ-ONLY.
+func Directory(ctx context.Context, conns []connectors.Connector) ([]connectors.DirectoryEntry, error) {
+	lister, _ := split(conns)
+	if lister == nil || len(lister.Missing()) > 0 {
+		return nil, ErrNoSheet
+	}
+	ctx, cancel := context.WithTimeout(ctx, bulkTimeout)
+	defer cancel()
+	people, err := lister.AllMembers(ctx)
+	if err != nil {
+		return nil, errors.New("couldn't read the membership sheet: " + err.Error())
+	}
+	sort.SliceStable(people, func(i, j int) bool {
+		a, b := people[i].Person, people[j].Person
+		if !strings.EqualFold(a.LastName, b.LastName) {
+			return strings.ToLower(a.LastName) < strings.ToLower(b.LastName)
+		}
+		return strings.ToLower(a.FirstName) < strings.ToLower(b.FirstName)
+	})
+	return people, nil
+}
+
+// Matches reports whether a member matches a search: every word in query
+// appears in their name or email (ignoring case), e.g. "jam bo" finds
+// Jamie Bowman.
+func Matches(p connectors.Person, query string) bool {
+	hay := strings.ToLower(p.Name() + " " + p.Email)
+	for _, w := range strings.Fields(strings.ToLower(query)) {
+		if !strings.Contains(hay, w) {
+			return false
+		}
+	}
+	return true
+}
+
 // Refresh re-checks one member everywhere (e.g. after onboarding them) and
 // updates their entry. READ-ONLY.
 func (r *Roster) Refresh(ctx context.Context, conns []connectors.Connector, email string) error {

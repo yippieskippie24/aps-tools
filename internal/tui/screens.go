@@ -90,7 +90,7 @@ func (a App) viewHelp(w int) string {
 		section("Moving around"),
 		key(12, "↑ ↓  j k", "Move up and down"),
 		key(12, "enter", "Choose the highlighted item"),
-		key(12, "1 – 6", "Jump straight to a menu item"),
+		key(12, "1 – 7", "Jump straight to a menu item"),
 		key(12, "esc  q", "Go back (or quit from the home screen)"),
 		key(12, "ctrl+c", "Quit from anywhere"),
 		"",

@@ -188,7 +188,7 @@ func (a App) updateMembers(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "c":
 		if e, ok := mv.selected(); ok {
-			return a.checkFromMembers(e.Email)
+			return a.checkFromMembers(e)
 		}
 	case "e":
 		if e, ok := mv.selected(); ok {
@@ -220,11 +220,13 @@ func (a App) onboardFromMembers(email string) (tea.Model, tea.Cmd) {
 
 // checkFromMembers opens the member check for a member, and comes back to
 // this list afterwards.
-func (a App) checkFromMembers(email string) (tea.Model, tea.Cmd) {
-	a, _ = a.openCheck()
-	a.back = screenMembers
-	a.member.input.SetValue(email)
-	return a.startCheck(email)
+func (a App) checkFromMembers(e roster.Entry) (tea.Model, tea.Cmd) {
+	a.screen, a.member, a.back = screenCheck, newMemberCheck(a.styles), screenMembers
+	who := e.Name()
+	if who == "" {
+		who = e.Email
+	}
+	return a.startCheckFor(e.Email, who)
 }
 
 // membersKeys is the footer for the Members screen.

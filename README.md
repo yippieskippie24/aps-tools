@@ -38,7 +38,10 @@ aps-tools --help                   # list every command
 Inside the app: arrow keys (or `j`/`k`) to move, `Enter` to choose, `?` for help, `q` to go back or quit.
 The app fills your Terminal window and scrolls long screens. Start with **1 Members**: everyone on
 the membership sheet, grouped by what they still need (←/→ switches group, `Enter` onboards the
-highlighted member, `e` emails them).
+highlighted member, `e` emails them). To look up just one person, use **2 Check a member**: it
+lists everyone on the sheet straight away (only the sheet is read), sorted by name (←/→ sorts by
+last name or email). Type part of a name to narrow it, ↑/↓ to highlight someone, and Enter to
+check them. **4 Activity log** shows every change the tool has made.
 
 ## Documentation
 

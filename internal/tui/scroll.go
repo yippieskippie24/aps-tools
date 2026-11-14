@@ -49,6 +49,8 @@ func (a App) scrolls() bool {
 	switch a.screen {
 	case screenDoctor, screenHelp:
 		return true
+	case screenLog:
+		return !a.log.editing
 	case screenCheck:
 		return a.member.report != nil && !a.member.running
 	case screenOnboard:

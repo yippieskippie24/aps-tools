@@ -14,6 +14,7 @@ const (
 	actionMembers
 	actionCheck
 	actionOnboard
+	actionLog
 	actionDoctor
 	actionHelp
 	actionQuit
@@ -32,11 +33,12 @@ type menuItem struct {
 // and handle its action in App.choose (app.go).
 var menu = []menuItem{
 	{key: "1", title: "Members", desc: "Everyone on the sheet, grouped by what they still need", action: actionMembers},
-	{key: "2", title: "Check a member", desc: "See a member's status in every APS system", action: actionCheck},
+	{key: "2", title: "Check a member", desc: "Find anyone on the sheet by name or email, then check them everywhere", action: actionCheck},
 	{key: "3", title: "Onboard a new member", desc: "Set up a new member everywhere, then draft their welcome email", action: actionOnboard},
-	{key: "4", title: "Test connections", desc: "Make sure the tool can reach every system", action: actionDoctor},
-	{key: "5", title: "Help", desc: "Keys, documentation, and where things are kept", action: actionHelp},
-	{key: "6", title: "Quit", desc: "Close the app", action: actionQuit},
+	{key: "4", title: "Activity log", desc: "Every change the tool has made, newest first", action: actionLog},
+	{key: "5", title: "Test connections", desc: "Make sure the tool can reach every system", action: actionDoctor},
+	{key: "6", title: "Help", desc: "Keys, documentation, and where things are kept", action: actionHelp},
+	{key: "7", title: "Quit", desc: "Close the app", action: actionQuit},
 }
 
 func (a App) viewHome(w int) string {

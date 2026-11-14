@@ -126,3 +126,34 @@ func (l *Log) Recent(n int) ([]string, error) {
 	}
 	return lines, sc.Err()
 }
+
+// ParseLine reads one line of the log back into an Entry. ok is false for
+// a line that isn't in the log's format (e.g. edited by hand).
+func ParseLine(line string) (Entry, bool) {
+	f := strings.Split(line, "\t")
+	if len(f) < 5 {
+		return Entry{}, false
+	}
+	t, err := time.ParseInLocation(timeLayout, f[0], time.Local)
+	if err != nil {
+		return Entry{}, false
+	}
+	member := f[1]
+	if member == "-" {
+		member = ""
+	}
+	return Entry{Time: t, Member: member, System: f[2], OK: f[3] == "ok", What: strings.Join(f[4:], " ")}, true
+}
+
+// Entries returns the last n entries, oldest first. Lines that can't be
+// read are skipped.
+func (l *Log) Entries(n int) ([]Entry, error) {
+	lines, err := l.Recent(n)
+	var out []Entry
+	for _, line := range lines {
+		if e, ok := ParseLine(line); ok {
+			out = append(out, e)
+		}
+	}
+	return out, err
+}

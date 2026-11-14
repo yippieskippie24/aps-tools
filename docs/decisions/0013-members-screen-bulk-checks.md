@@ -45,6 +45,10 @@ Revisit if it ever feels slow. The safe version is "show the saved list straight
 its age, while refreshing in the background", in a file readable only by the user, like the
 activity log.
 
+**Finding one member quickly.** "Check a member" doesn't load the roster. It lists everyone from
+the sheet alone (`roster.Directory`: one read), searchable by name or email, and checks only the
+person you choose. That's for days when you only need one member and don't know their email.
+
 ## Consequences
 - The Members screen is the app's front page: menu item 1.
 - Other connectors can opt into bulk checks without changing the screen.

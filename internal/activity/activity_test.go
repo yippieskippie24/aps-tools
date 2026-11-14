@@ -40,3 +40,24 @@ func TestAddAndRecent(t *testing.T) {
 		t.Errorf("the log names members, so only you should read it: %v %v", info.Mode(), err)
 	}
 }
+
+func TestEntriesReadBack(t *testing.T) {
+	l := Open(filepath.Join(t.TempDir(), FileName))
+	when := time.Date(2026, 11, 13, 15, 4, 5, 0, time.Local)
+	l.now = func() time.Time { return when }
+	_ = l.Add(Entry{Member: "alex@example.com", System: "Mailing list", OK: false, What: "It failed"})
+	_ = l.Add(Entry{System: "Onboarding", OK: true, What: "Finished"})
+	entries, err := l.Entries(10)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("entries = %+v, %v", entries, err)
+	}
+	if e := entries[0]; e.Member != "alex@example.com" || e.OK || e.What != "It failed" || !e.Time.Equal(when) {
+		t.Errorf("first = %+v", e)
+	}
+	if e := entries[1]; e.Member != "" || !e.OK {
+		t.Errorf("second = %+v", e)
+	}
+	if _, ok := ParseLine("not a log line"); ok {
+		t.Error("a bad line was accepted")
+	}
+}

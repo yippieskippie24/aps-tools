@@ -33,6 +33,7 @@ const (
 	screenOnboard
 	screenMembers
 	screenEmail
+	screenLog
 )
 
 // App is the whole application's state (the Bubble Tea "model").
@@ -66,8 +67,16 @@ type App struct {
 	// Members screen (see membersscreen.go)
 	members membersView
 
+	// The quick member list for Check a member (see checkscreen.go), and
+	// how it's sorted (an index into checkSorts; kept while the app is open).
+	people     people
+	peopleSort int
+
 	// Email a member screen (see emailscreen.go)
 	email emailView
+
+	// Activity log screen (see logscreen.go)
+	log logView
 
 	// back is where esc returns to from Check and Onboard: the home menu,
 	// or the Members list when a member was opened from there.
@@ -77,7 +86,7 @@ type App struct {
 // New creates the app. deps is normally doctor.DefaultDeps().
 func New(deps doctor.Deps) App {
 	s := newStyles(true)
-	return App{deps: deps, styles: s, width: 80, height: 24, member: newMemberCheck(s), onboard: newOnboarding(s)}
+	return App{deps: deps, styles: s, width: 80, height: 24, member: newMemberCheck(s), onboard: newOnboarding(s), log: newLogView(s)}
 }
 
 // Run starts the app and blocks until the user quits.
@@ -133,6 +142,7 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.styles = newStyles(msg.IsDark())
 		a.member.restyle(a.styles)
 		a.onboard.restyle(a.styles)
+		a.log.restyle(a.styles)
 		return a, nil
 
 	case tea.WindowSizeMsg:
@@ -140,7 +150,7 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case spinTickMsg:
-		busy := a.onboard.phase == obPlanning || a.onboard.phase == obRunning || a.members.loading || a.email.opening
+		busy := a.onboard.phase == obPlanning || a.onboard.phase == obRunning || a.members.loading || a.email.opening || a.people.loading
 		if !a.checking && !a.member.running && !busy {
 			return a, nil
 		}
@@ -171,6 +181,9 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case emailOpenedMsg, emailSentMsg:
 		return a.emailMsg(msg), nil
+
+	case peopleDoneMsg:
+		return a.peopleMsg(msg), nil
 
 	case rosterDoneMsg, memberRefreshedMsg:
 		return a.membersMsg(msg), nil
@@ -208,6 +221,8 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.updateMembers(msg)
 		case screenEmail:
 			return a.updateEmail(msg)
+		case screenLog:
+			return a.updateLog(msg)
 		}
 	}
 	return a, nil
@@ -251,6 +266,8 @@ func (a App) choose(item menuItem) (tea.Model, tea.Cmd) {
 	case actionOnboard:
 		a.back = screenHome
 		return a.openOnboard()
+	case actionLog:
+		return a.openLog(), nil
 	case actionDoctor:
 		a.screen = screenDoctor
 		a.checking = true
@@ -330,6 +347,8 @@ func (a App) screenContent(w int) (body, keys string) {
 		return a.viewMembers(w), a.membersKeys()
 	case screenEmail:
 		return a.viewEmail(w), a.emailKeys()
+	case screenLog:
+		return a.viewLog(w), a.logKeys()
 	}
 	return "", ""
 }
@@ -377,11 +396,23 @@ func shortVersion() string {
 	return version.Version
 }
 
-// keyHelp renders "key action · key action" pairs for the footer.
+// keyHelp renders "key action · key action" pairs for the footer. Pairs
+// are listed most important first: on a narrow window, the ones that don't
+// fit are left off, so the footer never wraps.
 func (a App) keyHelp(pairs ...string) string {
-	var parts []string
+	room := a.frameWidth()
+	sep := a.styles.subtle.Render("  ·  ")
+	out := "  "
 	for i := 0; i+1 < len(pairs); i += 2 {
-		parts = append(parts, a.styles.footerKey.Render(pairs[i])+" "+a.styles.subtle.Render(pairs[i+1]))
+		part := a.styles.footerKey.Render(pairs[i]) + " " + a.styles.subtle.Render(pairs[i+1])
+		next := out + part
+		if i > 0 {
+			next = out + sep + part
+		}
+		if lipgloss.Width(next) > room {
+			break
+		}
+		out = next
 	}
-	return "  " + strings.Join(parts, a.styles.subtle.Render("  ·  "))
+	return out
 }
