@@ -5,11 +5,14 @@ system (membership sheet, mailing list, Jira service desk, Discourse) from one p
 
 > **Status:** Phase 1 (read-only member checks across all four systems) is complete. Phase 2
 > (guided onboarding) is under way. Today the tool:
-> - plans each onboarding, gated on the membership sheet;
-> - adds new members in Cloudflare (destination address) and Jira (customer);
-> - creates each new member's personal forum invite;
-> - writes the emails you send members;
-> - can re-send Cloudflare's verification email.
+> - shows everyone on the membership sheet, grouped by what they still need;
+> - plans each onboarding, gated on the membership sheet (with a recorded override when you know
+>   better);
+> - adds new members in Cloudflare (destination address) and Jira (customer), and creates their
+>   personal forum invite;
+> - follows up on many members at once: re-sends Cloudflare's verification email, onboards
+>   whoever you tick, and helps you email them;
+> - writes the emails you send members, ready to copy into Mail.
 >
 > Adding members to the all-members list (`LIST_NEWS`) and writing status back to the sheet are
 > next. See the
@@ -50,30 +53,31 @@ aps-tools doctor                   # check that everything is connected
 aps-tools --help                   # list every command
 ```
 
-Inside the app: arrow keys to move (`j`/`k` too, except where you're typing), `Enter` to choose,
-`Esc` to go back, and `?` for help. The keys for each screen are listed along the bottom. The app
-fills your Terminal window and scrolls long screens. Whenever it's working, the bottom line says
-what it's doing and which step it's on. Nothing changes in any system unless you confirm it, and
-every change goes in the activity log. Start with **1 Members**: everyone on
-the membership sheet, grouped by what they still need (←/→ switches group). The list is on the
-left and the highlighted member's details are on the right, with the suggested next step. Press
-**Enter** on anyone for a popup of everything you can do for them: onboard them (or override the
-sheet, with a reason), email them, re-send Cloudflare's verification email, check every system, or
-see their activity. Confirmations and choices appear in popups too, and the result shows on the
-bottom line. **2 Follow-ups** gathers members who are only part-way set up: those who haven't
-verified their email, those who need setting up (usually on the forum), and those who haven't used
-their forum invite. Choose one and tick who to include (nobody is ticked to start), and the tool does
-the rest one member at a time (re-sending Cloudflare's email, or onboarding them). Then it helps you
-email them: as one email with everyone in Bcc where the email has nothing personal in it (Verify
-your email), otherwise one by one. To look up just one person, use **3 Check a member**: it lists everyone on the sheet
-straight away (only the sheet is read), sorted by name (←/→ sorts by last name or email). Type
-part of a name to narrow it, ↑/↓ to highlight someone, and Enter for the same popup. You can also
-type someone's full email address to act on a person who isn't on the sheet. **4 Onboard a new
-member** opens Members on **Needs setup**, where newly vetted members appear: Enter on one, then
-**Onboard**, shows their plan, and "Make N changes now" sets them up and offers their welcome
-email. (Or paste their email into Check a member.) For someone who isn't on the sheet yet, type
-their full email in Check a member and choose **Override the sheet and onboard…** with a reason. **5 Activity log** shows every change the
-tool has made.
+### Inside the app
+
+Arrow keys move (`j`/`k` too, except where you're typing), **Enter** chooses, **Esc** goes back,
+and **?** shows help. The keys for each screen are listed along the bottom. The app fills your
+Terminal window and scrolls long screens. Whenever it's working, the bottom line says what it's
+doing and which step it's on. **Nothing changes in any system unless you confirm it**, and every
+change goes in the activity log.
+
+Whatever screen a member is on, **Enter** opens the same popup of everything you can do for them:
+- onboard them (or override the sheet, with a reason);
+- email them;
+- re-send Cloudflare's verification email;
+- check every system;
+- see their activity.
+
+Confirmations and choices appear in popups too, and the result shows on the bottom line.
+
+| Menu | What it's for |
+|---|---|
+| **1 Members** | Everyone on the membership sheet, grouped by what they still need (←/→ switches group). The list is on the left; the highlighted member's details and suggested next step are on the right. |
+| **2 Follow-ups** | Members only part-way set up: haven't verified their email, need setting up (usually the forum), or haven't used their forum invite. Pick one, tick who to include with **space** (nobody is ticked to start), then **Enter**. The tool works through them one at a time, then helps you email them: one email with everyone in Bcc when it has nothing personal in it (Verify your email), otherwise one by one. |
+| **3 Check a member** | Find anyone on the sheet straight away (only the sheet is read). Type part of a name, or paste an email, and press Enter for their popup. Type a full email address to act on someone who isn't on the sheet. |
+| **4 Onboard a new member** | Opens Members on **Needs setup**, where newly vetted members appear. Enter on one → **Onboard** shows their plan; **Make N changes now** sets them up, then offers their welcome email. Someone not on the sheet yet? In Check a member, type their email and choose **Override the sheet and onboard…** with a reason. |
+| **5 Activity log** | Every change the tool has made, newest first. |
+| **6 Test connections** | Make sure the tool can reach every system. |
 
 ## Documentation
 
