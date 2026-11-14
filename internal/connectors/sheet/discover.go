@@ -24,10 +24,15 @@ type Discovery struct {
 	Inactive       int
 	OtherStatus    int
 	Vetted         int
-	InProgress     int // not vetted yet (marked New or not)
-	DuePassed      int
-	Duplicates     int // email addresses listed on more than one row
-	Notes          []string
+	Established    int // not vetted, but joined before vetting began
+	InProgress     int // not ready yet: not vetted and not established
+	// VettingStarted is the saved vetting start date (zero if not set).
+	VettingStarted time.Time
+	// Pattern shows how "App vetted" lines up with start dates.
+	Pattern    VettingPattern
+	DuePassed  int
+	Duplicates int // email addresses listed on more than one row
+	Notes      []string
 }
 
 // ColumnFound is one role and where (or whether) it was found.
@@ -38,9 +43,10 @@ type ColumnFound struct {
 }
 
 // Discover summarises the sheet and the chosen tab (or the first tab if
-// tab is empty).
-func (c *Client) Discover(ctx context.Context, id, tab string) (Discovery, error) {
-	d := Discovery{ServiceAccount: c.ServiceAccount()}
+// tab is empty). vettingStarted is the saved vetting start date, or the
+// zero time if there isn't one.
+func (c *Client) Discover(ctx context.Context, id, tab string, vettingStarted time.Time) (Discovery, error) {
+	d := Discovery{ServiceAccount: c.ServiceAccount(), VettingStarted: vettingStarted}
 	s, err := c.GetSpreadsheet(ctx, id)
 	if err != nil {
 		return d, err
@@ -89,9 +95,12 @@ func summarize(d *Discovery, rows [][]string) {
 		default:
 			d.OtherStatus++
 		}
-		if m.Vetted {
+		switch {
+		case m.Vetted:
 			d.Vetted++
-		} else {
+		case m.Established(d.VettingStarted):
+			d.Established++
+		default:
 			d.InProgress++
 		}
 		if t, ok := ParseDate(m.DueDate); ok && t.Before(time.Now()) {
@@ -106,6 +115,7 @@ func summarize(d *Discovery, rows [][]string) {
 			d.Duplicates++
 		}
 	}
+	d.Pattern = FindVettingPattern(members)
 	d.Notes = conclusions(*d, cols)
 }
 
@@ -124,8 +134,15 @@ func conclusions(d Discovery, cols Columns) []string {
 	if !cols.Found(RoleVetted) {
 		notes = append(notes, "Without an \"App vetted\" column, nobody can be shown as ready to set up. Its header must contain \"vetted\".")
 	}
+	if d.VettingStarted.IsZero() && d.Pattern.UnmarkedBefore > 0 {
+		notes = append(notes, d.Pattern.Explain()+" If the chair began marking \"App vetted\" around "+FriendlyDate(d.Pattern.FirstVetted)+", members who started earlier don't need it: run `aps-tools setup sheet` to set the date vetting began.")
+	}
 	if d.InProgress > 0 {
-		notes = append(notes, fmt.Sprintf("%d row(s) aren't marked \"App vetted\" yet. Don't set those people up until the membership chair marks them.", d.InProgress))
+		why := "aren't marked \"App vetted\" yet"
+		if !d.VettingStarted.IsZero() {
+			why += " and didn't start before " + FriendlyDate(d.VettingStarted)
+		}
+		notes = append(notes, fmt.Sprintf("%d row(s) %s. Don't set those people up until the membership chair marks them.", d.InProgress, why))
 	}
 	if d.Duplicates > 0 {
 		notes = append(notes, fmt.Sprintf("%d email address(es) appear on more than one row. The check says which rows.", d.Duplicates))

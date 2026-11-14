@@ -197,6 +197,7 @@ func setupSheet(ctx context.Context, out io.Writer) error {
 				Tab:             keepIfSameSheet(cfg.Sheet, id),
 				ServiceAccount:  key.ClientEmail,
 				AccessRequested: true,
+				VettingStarted:  keepVettingIfSameSheet(cfg.Sheet, id),
 			}
 			if err := config.Save(cfg); err != nil {
 				return err
@@ -250,6 +251,10 @@ func setupSheet(ctx context.Context, out io.Writer) error {
 	if !cols.Found(sheet.RoleVetted) {
 		lipgloss.Fprintln(out, warnStyle.Render("! ")+"No \"App vetted\" column found, so nobody will show as ready to set up.")
 	}
+	vettingStarted, err := askVettingStarted(ctx, out, members, cfg.Sheet, id)
+	if err != nil {
+		return err
+	}
 
 	// 3. Save — everything has been tested.
 	where, err := saveKey()
@@ -261,6 +266,7 @@ func setupSheet(ctx context.Context, out io.Writer) error {
 		SpreadsheetTitle: book.Title,
 		Tab:              tab,
 		ServiceAccount:   key.ClientEmail,
+		VettingStarted:   vettingStarted,
 	}
 	if err := config.Save(cfg); err != nil {
 		return err
@@ -280,6 +286,69 @@ func keepIfSameSheet(saved config.Sheet, id string) string {
 		return saved.Tab
 	}
 	return ""
+}
+
+// keepVettingIfSameSheet keeps the saved vetting start date when setup is
+// re-run for the same sheet, and drops it for a different sheet.
+func keepVettingIfSameSheet(saved config.Sheet, id string) string {
+	if saved.SpreadsheetID == id {
+		return saved.VettingStarted
+	}
+	return ""
+}
+
+// askVettingStarted asks for the date the membership chair began marking
+// "App vetted" (see sheet.Member.Established). Long-standing members joined
+// before then and have a blank in that column, which shouldn't hold them
+// up. It suggests the earliest start date on a vetted row, and shows how
+// many rows each choice affects. Blank means everyone needs "App vetted".
+func askVettingStarted(ctx context.Context, out io.Writer, members []sheet.Member, saved config.Sheet, id string) (string, error) {
+	p := sheet.FindVettingPattern(members)
+	value := keepVettingIfSameSheet(saved, id)
+	if value == "" && p.UnmarkedBefore > 0 {
+		value = p.FirstVetted.Format(sheet.DateLayout)
+	}
+	if value == "" && p.UnmarkedBefore == 0 {
+		return "", nil // nothing suggests long-standing members need it
+	}
+
+	desc := "Long-standing members joined before the membership chair began marking\n" +
+		"\"App vetted\", so it's blank for them. Members who started before this date\n" +
+		"(and aren't marked New) will count as vetted. Newer members still need it.\n"
+	if explain := p.Explain(); explain != "" {
+		desc += "\n" + explain + "\n"
+	}
+	desc += "\nWrite it like 2025-03-01. Leave blank to require \"App vetted\" for everyone."
+	form := huh.NewForm(huh.NewGroup(huh.NewInput().
+		Title("When did \"App vetted\" start being used?").
+		Description(desc).
+		Value(&value).
+		Validate(func(s string) error {
+			_, err := sheet.ParseVettingStarted(s)
+			return err
+		}))).WithTheme(formTheme)
+	if err := form.RunWithContext(ctx); err != nil {
+		return "", cancelled(err)
+	}
+	t, _ := sheet.ParseVettingStarted(value)
+	if t.IsZero() {
+		lipgloss.Fprintln(out, dimStyle.Render("    Every member will need \"App vetted\"."))
+		return "", nil
+	}
+	var vetted, established, waiting int
+	for _, m := range members {
+		switch {
+		case m.Vetted:
+			vetted++
+		case m.Established(t):
+			established++
+		default:
+			waiting++
+		}
+	}
+	lipgloss.Fprintln(out, okStyle.Render("✓ ")+fmt.Sprintf("Vetting began %s: %d vetted, %d joined before then, %d not vetted yet.",
+		sheet.FriendlyDate(t), vetted, established, waiting))
+	return t.Format(sheet.DateLayout), nil
 }
 
 // offerToDeleteDownload asks to delete the downloaded key file once the key

@@ -67,6 +67,12 @@ type Sheet struct {
 	// it when you choose "I've requested access", and clears it once the
 	// sheet can be read.
 	AccessRequested bool `toml:"access_requested"`
+	// VettingStarted is the date (YYYY-MM-DD) the membership chair began
+	// marking "App vetted". Members who started before it, and aren't
+	// marked New, count as vetted even with a blank "App vetted": they
+	// joined before it was tracked. Blank means every member needs
+	// "App vetted". Setup suggests a date from the sheet.
+	VettingStarted string `toml:"vetting_started"`
 }
 
 // Discourse holds the settings for the APS Discourse forum.

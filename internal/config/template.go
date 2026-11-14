@@ -89,6 +89,11 @@ service_account = {{ q .Sheet.ServiceAccount }}
 # true while your request to share the sheet with the tool is waiting for the
 # owner's approval. "aps-tools setup sheet" sets and clears it.
 access_requested = {{ .Sheet.AccessRequested }}
+# The date the membership chair began marking "App vetted", written like
+# 2025-03-01. Members who started before it (and aren't marked New) count as
+# vetted, because they joined before it was tracked. Leave blank to require
+# "App vetted" for everyone. "aps-tools setup sheet" suggests a date.
+vetting_started = {{ q .Sheet.VettingStarted }}
 `
 
 var tmpl = template.Must(template.New("config").Funcs(template.FuncMap{"q": tomlString}).Parse(fileTemplate))

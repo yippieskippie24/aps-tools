@@ -74,6 +74,8 @@ discover` (November 2026):
 **Google Sheet.** The master membership list, run by the membership chair. An applicant is added
 with **New** marked while their application and background check are in progress. The chair marks
 **App vetted** = Y when everything is complete, and only then should the webmaster set them up.
+Long-standing members joined before App vetted was used, so members who started before a set date
+(and aren't marked New) count as vetted ([decision 0010](decisions/0010-members-before-vetting-began.md)).
 The tool reads it as a Google service account
 ([decision 0009](decisions/0009-google-service-account.md)) and finds columns by header text. It
 never shows the address or phone columns. In Phase 2 it will write back setup status so other

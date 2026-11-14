@@ -43,3 +43,4 @@ What does this make easier or harder?
 | [0007](0007-mailing-lists-in-worker-variables.md) | Mailing lists live in Text variables on one Cloudflare Worker |
 | [0008](0008-discourse-user-api-key.md) | Connect to Discourse with a user API key approved in the browser |
 | [0009](0009-google-service-account.md) | Read the membership Google Sheet as a service account |
+| [0010](0010-members-before-vetting-began.md) | Members who joined before "App vetted" was used count as vetted |

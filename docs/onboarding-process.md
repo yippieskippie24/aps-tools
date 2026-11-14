@@ -23,7 +23,8 @@ _Steps marked **TBD** will be filled in as each system is investigated._
 **1. Membership sheet.** The membership chair adds each applicant to the sheet and marks **New**
 while their application and background check are in progress. When everything is complete the chair
 marks **App vetted** = **Y**. **Don't start steps 2–5 until App vetted is Y.** `aps-tools check`
-shows this as "Waiting on member" until then. See [setup/google-sheet.md](setup/google-sheet.md).
+shows this as "Waiting on member" until then. (Long-standing members who started before App vetting
+began don't need it; see the setup guide.) See [setup/google-sheet.md](setup/google-sheet.md).
 
 **2. Mailing list (Cloudflare).** APS email uses Cloudflare Email Routing with a Worker that
 forwards list mail to members. In the Cloudflare dashboard: the APS domain → **Email** →

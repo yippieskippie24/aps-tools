@@ -37,11 +37,16 @@ type Connector struct {
 	cfg    config.Sheet
 	client *Client
 	keyErr error // why the key couldn't be loaded or read, if it couldn't
+	// vettingStarted is cfg.VettingStarted as a date (zero if blank);
+	// dateErr says why it couldn't be read, if it couldn't.
+	vettingStarted time.Time
+	dateErr        error
 }
 
 // New builds the connector from saved settings and the secret store.
 func New(cfg config.Sheet, store secrets.Store) *Connector {
 	c := &Connector{cfg: cfg}
+	c.vettingStarted, c.dateErr = ParseVettingStarted(cfg.VettingStarted)
 	raw, err := store.Get(secrets.GoogleServiceAccountKey)
 	if err != nil {
 		c.keyErr = err
@@ -94,6 +99,9 @@ func (c *Connector) TestConnection(ctx context.Context) error {
 
 // load reads the member tab and finds its columns.
 func (c *Connector) load(ctx context.Context) ([]Member, error) {
+	if c.dateErr != nil {
+		return nil, c.dateErr
+	}
 	rows, err := c.client.Rows(ctx, c.cfg.SpreadsheetID, c.cfg.Tab)
 	if err != nil {
 		return nil, err
@@ -112,7 +120,7 @@ func (c *Connector) CheckMember(ctx context.Context, email string) (connectors.M
 	if err != nil {
 		return connectors.MemberStatus{}, err
 	}
-	st := memberStatus(Find(members, email), time.Now())
+	st := memberStatus(Find(members, email), time.Now(), c.vettingStarted)
 	if note := c.newerTabNote(ctx); note != "" {
 		st.Details = append(st.Details, note)
 	}
@@ -154,18 +162,20 @@ func Find(members []Member, email string) []Member {
 //
 // The rule (from the membership chair's process): someone is ready to be
 // set up once "App vetted" is marked. Until then their application is still
-// in progress. Other columns are shown for information.
-func memberStatus(rows []Member, now time.Time) connectors.MemberStatus {
+// in progress. The exception is members who joined before vetting began
+// (see Member.Established in vetting.go). Other columns are shown for
+// information.
+func memberStatus(rows []Member, now, vettingStarted time.Time) connectors.MemberStatus {
 	if len(rows) == 0 {
 		return connectors.MemberStatus{State: connectors.StateMissing,
 			Summary: "Not on the membership list.",
 			Fix:     "If they've applied, check with the membership chair — they add new members to the sheet."}
 	}
 
-	// With duplicates, judge on a vetted row if there is one, else the last.
+	// With duplicates, judge on a ready row if there is one, else the last.
 	m := rows[len(rows)-1]
 	for i := len(rows) - 1; i >= 0; i-- {
-		if rows[i].Vetted {
+		if rows[i].Ready(vettingStarted) {
 			m = rows[i]
 			break
 		}
@@ -209,10 +219,18 @@ func memberStatus(rows []Member, now time.Time) connectors.MemberStatus {
 		details = append(details, line)
 	}
 
+	if m.Established(vettingStarted) {
+		details = append(details, "\"App vetted\" is blank, which is expected: they started before "+FriendlyDate(vettingStarted)+", when vetting began.")
+		return connectors.MemberStatus{State: connectors.StateOK, Details: details,
+			Summary: "On the membership list. They joined before \"App vetted\" was tracked."}
+	}
 	if !m.Vetted {
 		summary := "On the list, but \"App vetted\" isn't marked yet."
 		if m.New {
 			summary = "On the list as New: their application is still in progress."
+		}
+		if _, ok := m.Start(); !ok && !vettingStarted.IsZero() && !m.New {
+			details = append(details, "No readable start date, so the tool can't tell whether they joined before vetting began ("+FriendlyDate(vettingStarted)+"). Adding their start date to the sheet would settle it.")
 		}
 		return connectors.MemberStatus{State: connectors.StatePending, Summary: summary, Details: details,
 			Fix: "Wait until the membership chair marks \"App vetted\" as Y before setting them up anywhere else."}

@@ -44,8 +44,12 @@ changed. No names, emails, addresses or phone numbers are shown.`,
 			if err != nil {
 				return fmt.Errorf("the saved Google key can't be used: %w (run: aps-tools setup sheet)", err)
 			}
+			started, err := sheet.ParseVettingStarted(cfg.Sheet.VettingStarted)
+			if err != nil {
+				return err
+			}
 			lipgloss.Fprintln(out, dimStyle.Render("Reading the membership sheet… (read-only)"))
-			d, err := sheet.NewClient(key).Discover(cmd.Context(), cfg.Sheet.SpreadsheetID, cfg.Sheet.Tab)
+			d, err := sheet.NewClient(key).Discover(cmd.Context(), cfg.Sheet.SpreadsheetID, cfg.Sheet.Tab, started)
 			if err != nil {
 				return err
 			}
@@ -84,7 +88,12 @@ func printSheetDiscovery(out io.Writer, d sheet.Discovery) {
 		h("Members")
 		line(fmt.Sprintf("%d rows with an email address", d.Rows))
 		line(fmt.Sprintf("Member Status: %d Active, %d Inactive, %d other or blank", d.Active, d.Inactive, d.OtherStatus))
-		line(fmt.Sprintf("App vetted: %d yes, %d not yet", d.Vetted, d.InProgress))
+		if d.VettingStarted.IsZero() {
+			line(fmt.Sprintf("App vetted: %d yes, %d not yet", d.Vetted, d.InProgress))
+		} else {
+			line(fmt.Sprintf("App vetted: %d yes, %d joined before vetting began (%s), %d not yet",
+				d.Vetted, d.Established, sheet.FriendlyDate(d.VettingStarted), d.InProgress))
+		}
 		line(fmt.Sprintf("Dues date already passed: %d", d.DuePassed))
 	}
 

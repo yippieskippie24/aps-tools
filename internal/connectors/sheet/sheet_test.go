@@ -116,7 +116,7 @@ func TestMemberStatus(t *testing.T) {
 		{"olive@example.com", connectors.StateOK, "vetted", "not marked Active"},
 	}
 	for _, tc := range cases {
-		st := memberStatus(Find(members, tc.email), now)
+		st := memberStatus(Find(members, tc.email), now, time.Time{})
 		all := strings.Join(st.Details, "\n")
 		if st.State != tc.want || !strings.Contains(st.Summary, tc.summary) || !strings.Contains(all, tc.detail) {
 			t.Errorf("%s: got %v %q %v", tc.email, st.State, st.Summary, st.Details)
@@ -127,7 +127,7 @@ func TestMemberStatus(t *testing.T) {
 			}
 		}
 	}
-	olive := memberStatus(Find(members, "olive@example.com"), now)
+	olive := memberStatus(Find(members, "olive@example.com"), now, time.Time{})
 	if !strings.Contains(strings.Join(olive.Details, " "), "has passed") {
 		t.Errorf("past due date not noted: %v", olive.Details)
 	}
@@ -280,7 +280,7 @@ func TestCheckMemberEndToEnd(t *testing.T) {
 	if calls != 1 {
 		t.Errorf("signed in %d times; the access token should be reused", calls)
 	}
-	d, err := c.client.Discover(context.Background(), "sheet-1", "")
+	d, err := c.client.Discover(context.Background(), "sheet-1", "", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}

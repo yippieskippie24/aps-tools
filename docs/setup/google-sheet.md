@@ -16,10 +16,27 @@ Only then should the webmaster set them up anywhere else. So the check says:
 
 | Result | Meaning |
 |---|---|
-| ✓ **Set up** | On the sheet, and **App vetted** is marked. |
+| ✓ **Set up** | On the sheet, and **App vetted** is marked, or they joined before vetting began (below). |
 | … **Waiting on member** | On the sheet, but not vetted yet (usually still marked **New**). **Don't set them up yet.** |
 | ✗ **Not set up** | Their email isn't on the sheet. |
 | ? **Couldn't check** | The sheet couldn't be read. Run `aps-tools doctor`. |
+
+### Members who joined before "App vetted" was used
+
+The chair only began marking **App vetted** recently, so it's blank for long-standing members.
+They aren't waiting on anything. So setup asks **when App vetting began**, and suggests a date: the
+earliest **Start Date** on a row that's marked vetted. It shows how many unmarked rows started
+before and after that date, so you can see whether it fits.
+
+A member counts as vetted without App vetted only if **all** of these are true:
+- they're **not** marked **New**;
+- their **Start Date** is filled in;
+- it's **before** the date vetting began.
+
+Everyone else still needs App vetted, including anyone with no start date. Leave the date blank to
+require App vetted for everyone. To change it, run `aps-tools setup sheet` again, or edit
+`vetting_started` in the settings file (written like `2025-03-01`). Background:
+[decision 0010](../decisions/0010-members-before-vetting-began.md).
 
 The check also shows their name and row number, plus Member Status (with a note if it isn't
 "Active"), start date, paid and due dates (with a note if the due date has passed). It notes when
@@ -142,10 +159,11 @@ aps-tools sheet discover
 Shows the tabs, which column is used for what, and counts:
 - rows;
 - Active / Inactive;
-- vetted / not yet;
+- vetted / joined before vetting began / not yet;
 - due dates passed.
 
-It also notes duplicate emails and rows without an email. No names, emails, addresses or phone
+It also notes duplicate emails and rows without an email. If no vetting start date is set and
+unmarked rows look like long-standing members, it says so and suggests one. No names, emails, addresses or phone
 numbers are shown.
 
 ## When a new member tab is made
