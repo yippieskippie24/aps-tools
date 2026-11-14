@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
+	"github.com/yippieskippie24/aps-tools/internal/progress"
 )
 
 // systemTimeout limits how long we wait for any one system to answer.
@@ -69,12 +70,14 @@ func Run(ctx context.Context, conns []connectors.Connector, email string, notYet
 	}
 
 	results := make([]SystemResult, len(conns))
+	done := progress.Counter(ctx, "Checking", conns)
 	var wg sync.WaitGroup
 	for i, c := range conns {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			results[i] = SystemResult{System: c.Name(), ID: c.ID(), MemberStatus: checkOne(ctx, c, email)}
+			done(c)
 		}()
 	}
 	wg.Wait()

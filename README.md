@@ -6,11 +6,13 @@ system (membership sheet, mailing list, Jira service desk, Discourse) from one p
 > **Status:** Phase 1 (read-only member checks across all four systems) is complete. Phase 2
 > (guided onboarding) is under way. Today the tool:
 > - plans each onboarding, gated on the membership sheet;
+> - adds new members in Cloudflare (destination address) and Jira (customer);
 > - creates each new member's personal forum invite;
 > - writes the emails you send members;
 > - can re-send Cloudflare's verification email.
 >
-> Mailing-list and Jira setup and writing status back to the sheet are next. See the
+> Adding members to the all-members list (`LIST_NEWS`) and writing status back to the sheet are
+> next. See the
 > [roadmap](docs/design.md#4-features-and-phases).
 
 ## Install
@@ -49,8 +51,9 @@ aps-tools --help                   # list every command
 
 Inside the app: arrow keys to move (`j`/`k` too, except where you're typing), `Enter` to choose,
 `Esc` to go back, and `?` for help. The keys for each screen are listed along the bottom. The app
-fills your Terminal window and scrolls long screens. Nothing changes in any system unless you
-confirm it, and every change goes in the activity log. Start with **1 Members**: everyone on
+fills your Terminal window and scrolls long screens. Whenever it's working, the bottom line says
+what it's doing and which step it's on. Nothing changes in any system unless you confirm it, and
+every change goes in the activity log. Start with **1 Members**: everyone on
 the membership sheet, grouped by what they still need (←/→ switches group, `Enter` onboards the
 highlighted member, `e` emails them). To look up just one person, use **2 Check a member**: it
 lists everyone on the sheet straight away (only the sheet is read), sorted by name (←/→ sorts by

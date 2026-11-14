@@ -18,18 +18,21 @@
 #     {{FORUM_INVITE_LINK}}    their personal forum invite link
 #     {{GETTING_STARTED_LINK}} the forum's Getting Started topics
 #     {{WEBMASTER_NAME}}       your name, from "aps-tools setup webmaster"
+#     {{HELP_DESK_NAME}}       the APS help desk's name in Jira
+#     {{ELEVATOR_ACCESS_LINK}} the forum topic on requesting Elevator access
 #   Anything the tool can't fill in stays highlighted, so you can fill it in
 #   by hand after pasting.
 
-Subject: Welcome to APS! Two quick steps to get connected
+Subject: Welcome to APS! A few quick steps to get connected
 
 Hello {{FIRST_NAME}},
 
-Welcome to the Arboretum Photographers Society! Your membership is complete, and I've just set you up on the APS email list and members' forum. There are two quick things only you can do to finish.
+Welcome to the Arboretum Photographers Society! Your membership is complete, and I've just set you up on the APS email list and members' forum. There are a few quick things only you can do to finish.
 
 > **The short version**
 > 1. **Verify your email address.** Look for an email from **Cloudflare** asking you to verify your address, and click the link in it. **Until you do, you won't receive any APS emails.**
 > 2. **Join the forum.** Click your personal invitation link and follow the steps to create your account: {{FORUM_INVITE_LINK}}
+> 3. **Request access to Elevator,** where APS members share photos with the Arboretum. Once you're on the forum, follow the steps here: {{ELEVATOR_ACCESS_LINK}}
 
 The Cloudflare email should already be in your inbox. If you don't see it, please check your spam or junk folder.
 
@@ -43,6 +46,13 @@ The Cloudflare email should already be in your inbox. If you don't see it, pleas
 - The link is just for you and works once, so please don't share it.
 - Please use it in the next few weeks. Invitations expire after a while (if yours does, just let me know).
 - Once you've signed up, you'll land on our welcome topic, the best place to start. Our **Getting Started** topics explain how the forum works: {{GETTING_STARTED_LINK}}
+
+**3. Elevator: sharing your photos with the Arboretum.** Elevator is a photo platform, made by the University of Minnesota, that the Arboretum lets APS use. Members upload photos to it, and the Arboretum's staff use them to help promote the Arboretum.
+- To get an account, you sign a Media License Agreement, which lets the Arboretum use your photos. The forum topic walks you through it: {{ELEVATOR_ACCESS_LINK}}
+- Arboretum staff set up each account by hand, so it can take up to 5 business days.
+- When your login arrives, please change your password straight away (the topic shows how).
+
+**You may also get an email from Atlassian** about our help desk, the {{HELP_DESK_NAME}}. It just makes sure your requests for help reach us. You don't need to do anything with it.
 
 **Questions?** Just reply to this email and I'll be happy to help.
 

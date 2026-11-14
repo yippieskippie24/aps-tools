@@ -28,6 +28,7 @@ func setupEmail(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	link := cfg.Discourse.GettingStartedURL
+	elevator := cfg.Discourse.ElevatorAccessURL
 	edit := true
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewNote().
@@ -38,6 +39,21 @@ func setupEmail(ctx context.Context, out io.Writer) error {
 			Description("Open the Getting Started tag (or category) on the forum and copy its\naddress from the browser. Leave blank to fill it in by hand in each email.").
 			Placeholder("https://forum.example.org/tag/getting-started").
 			Value(&link).
+			Validate(func(s string) error {
+				s = strings.TrimSpace(s)
+				if s == "" {
+					return nil
+				}
+				if u, err := url.Parse(s); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+					return errors.New("paste the full address, starting with https://")
+				}
+				return nil
+			}),
+		huh.NewInput().
+			Title("Link to the forum topic on requesting Elevator access").
+			Description("The topic that walks members through getting an Elevator account.\nLeave blank to fill it in by hand in each email.").
+			Placeholder("https://forum.example.org/t/elevator-request-access/25").
+			Value(&elevator).
 			Validate(func(s string) error {
 				s = strings.TrimSpace(s)
 				if s == "" {
@@ -59,6 +75,7 @@ func setupEmail(ctx context.Context, out io.Writer) error {
 		return cancelled(err)
 	}
 	cfg.Discourse.GettingStartedURL = strings.TrimSpace(link)
+	cfg.Discourse.ElevatorAccessURL = strings.TrimSpace(elevator)
 	if err := config.Save(cfg); err != nil {
 		return err
 	}

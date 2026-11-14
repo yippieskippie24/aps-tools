@@ -77,6 +77,9 @@ client_id = {{ q .Discourse.ClientID }}
 # The link to the forum's "Getting Started" topics (a tag or category), used
 # in the welcome email. "aps-tools setup email" asks for it.
 getting_started_url = {{ q .Discourse.GettingStartedURL }}
+# The forum topic on how to request access to Elevator, used in the welcome
+# email. "aps-tools setup email" asks for it.
+elevator_access_url = {{ q .Discourse.ElevatorAccessURL }}
 # true lets onboarding create each new member's personal invite link (no
 # email from the forum; the link goes in your welcome email). It needs a key
 # with write access: "aps-tools setup discourse" asks.

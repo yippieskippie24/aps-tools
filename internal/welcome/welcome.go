@@ -120,6 +120,8 @@ var Placeholders = map[string]string{
 	"FORUM_INVITE_LINK":    "their forum invite link: onboard them first so the tool creates it, or let the tool create invites (run: aps-tools setup discourse)",
 	"FORUM_USERNAME":       "their forum username (they don't have a forum account, or the forum couldn't be checked)",
 	"MEMBER_EMAIL":         "their email address",
+	"HELP_DESK_NAME":       "the APS help desk's name in Jira (run: aps-tools setup jira)",
+	"ELEVATOR_ACCESS_LINK": "the forum topic on requesting Elevator access (run: aps-tools setup email)",
 	"FORUM_LOGIN_LINK":     "the forum's sign-in page (run: aps-tools setup discourse)",
 	"PASSWORD_RESET_LINK":  "the forum's \"forgot password\" page (run: aps-tools setup discourse)",
 	"GETTING_STARTED_LINK": "the forum's Getting Started link (run: aps-tools setup email)",
@@ -180,7 +182,9 @@ func Values(cfg *config.Config, p connectors.Person) map[string]string {
 		set("PASSWORD_RESET_LINK", forum+"/password-reset")
 	}
 	set("GETTING_STARTED_LINK", cfg.Discourse.GettingStartedURL)
+	set("ELEVATOR_ACCESS_LINK", cfg.Discourse.ElevatorAccessURL)
 	set("WEBMASTER_NAME", cfg.Webmaster.Name)
+	set("HELP_DESK_NAME", cfg.Jira.ServiceDeskName)
 	return v
 }
 

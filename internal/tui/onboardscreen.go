@@ -18,6 +18,7 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/onboard"
+	"github.com/yippieskippie24/aps-tools/internal/progress"
 	"github.com/yippieskippie24/aps-tools/internal/welcome"
 )
 
@@ -115,6 +116,14 @@ func (a App) startPlanWith(email, reason string) (App, tea.Cmd) {
 		a.onboard.err = "That doesn't look like an email address — try name@example.com."
 		return a, nil
 	}
+	label := "Planning onboarding for " + strings.TrimSpace(email)
+	if reason != "" {
+		label = "Overriding the sheet and planning onboarding for " + strings.TrimSpace(email)
+	}
+	ctx, watch, ok := a.begin(label)
+	if !ok {
+		return a, nil
+	}
 	a.onboard.err, a.onboard.notice = "", ""
 	if reason == "" {
 		a.onboard.reason.SetValue("") // an ordinary plan, not an override
@@ -122,31 +131,27 @@ func (a App) startPlanWith(email, reason string) (App, tea.Cmd) {
 	}
 	a.onboard.phase = obPlanning
 	a.onboard.input.Blur()
-	deps := a.deps
 	log, logErr := a.activityLog()
 	run := func() tea.Msg {
 		if reason != "" && logErr != nil {
 			return planDoneMsg{err: logErr} // an override must be recorded
 		}
-		cfg, err := deps.LoadConfig()
-		if errors.Is(err, config.ErrNotFound) {
-			cfg, err = &config.Config{}, nil
-		}
+		_, conns, err := a.connect(ctx)
 		if err != nil {
 			return planDoneMsg{err: err}
 		}
-		conns := deps.Connectors(cfg, deps.Secrets(cfg))
 		if reason == "" {
-			p, err := onboard.Prepare(context.Background(), conns, email)
+			p, err := onboard.Prepare(ctx, conns, email)
 			return planDoneMsg{plan: p, err: err}
 		}
-		p, err := onboard.PrepareOverride(context.Background(), conns, email, reason)
+		p, err := onboard.PrepareOverride(ctx, conns, email, reason)
 		if err == nil && p.Override != "" {
+			progress.Report(ctx, "Recording the override in the activity log")
 			err = p.LogOverride(log)
 		}
 		return planDoneMsg{plan: p, err: err}
 	}
-	return a, tea.Batch(run, spinTick())
+	return a, tea.Batch(watch, run)
 }
 
 // activityLog is the activity log next to the settings file.
@@ -161,7 +166,7 @@ func (a App) activityLog() (*activity.Log, error) {
 // runStep runs step i in the background. The plan is copied first, so the
 // screen never reads a step while it's being changed. first and last say
 // whether to write the run's start and end lines to the activity log.
-func (a App) runStep(i int, first bool) tea.Cmd {
+func (a App) runStep(ctx context.Context, i int, first bool) tea.Cmd {
 	p := *a.onboard.plan
 	p.Steps = slices.Clone(p.Steps)
 	log, logErr := a.activityLog()
@@ -176,7 +181,7 @@ func (a App) runStep(i int, first bool) tea.Cmd {
 				return stepDoneMsg{plan: p, step: -1, logErr: err}
 			}
 		}
-		errs = append(errs, p.RunStep(context.Background(), i, log))
+		errs = append(errs, p.RunStep(ctx, i, log))
 		if p.Next() < 0 {
 			errs = append(errs, p.LogFinish(log))
 		}
@@ -216,7 +221,7 @@ func (a App) onboardMsg(msg tea.Msg) (App, tea.Cmd, bool) {
 		}
 		if next := ob.plan.Next(); next >= 0 {
 			ob.current = next
-			return a, a.runStep(next, false), true
+			return a, a.runStep(a.task.ctx, next, false), true
 		}
 		ob.phase, ob.current = obDone, -1
 		a.scroll = toBottom // the result notice is at the end
@@ -265,7 +270,7 @@ func (a App) updateOnboard(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case obWelcome:
 		ob.phase = ob.before
 		if key == "y" {
-			return a, a.recordWelcomeSent()
+			return a.recordWelcomeSent()
 		}
 		ob.notice = "Not recorded as sent. Press w to open it again."
 		return a, nil
@@ -298,7 +303,12 @@ func (a App) updateOnboard(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				ob.phase = obDone
 				return a, nil
 			}
-			return a, tea.Batch(a.runStep(ob.current, true), spinTick())
+			ctx, watch, ok := a.begin("Onboarding " + ob.plan.Who())
+			if !ok {
+				ob.phase = obPlan
+				return a, nil
+			}
+			return a, tea.Batch(watch, a.runStep(ctx, ob.current, true))
 		default:
 			ob.phase = obPlan
 			ob.notice = "Cancelled: nothing was changed."
@@ -312,7 +322,7 @@ func (a App) updateOnboard(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.screen = a.back
 		if a.back == screenMembers && ob.phase == obDone {
 			// Changes were made: re-check them so the list is current.
-			return a, a.refreshMember(ob.plan.Person.Email)
+			return a.refreshMember(ob.plan.Person.Email)
 		}
 	case "n", "/":
 		return a.openOnboard()
@@ -332,7 +342,7 @@ func (a App) updateOnboard(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "w":
 		if a.welcomeAvailable() {
-			return a, a.openWelcome()
+			return a.openWelcome()
 		}
 	case "e":
 		if ob.phase == obPlan || ob.phase == obDone {
@@ -570,18 +580,20 @@ func (a App) welcomeAvailable() bool {
 
 // openWelcome builds and opens the welcome email in the background, with
 // the member's forum invite link filled in.
-func (a App) openWelcome() tea.Cmd {
-	deps, p, who := a.deps, a.onboard.plan.Person, a.onboard.plan.Who()
+func (a App) openWelcome() (App, tea.Cmd) {
+	ctx, watch, ok := a.begin("Opening the welcome email for " + a.onboard.plan.Who())
+	if !ok {
+		return a, nil
+	}
+	p, who := a.onboard.plan.Person, a.onboard.plan.Who()
 	inviteToCreate := a.onboard.plan.Next() >= 0 // e.g. the forum invite, if Go hasn't been pressed
-	return func() tea.Msg {
-		cfg, err := deps.LoadConfig()
-		if errors.Is(err, config.ErrNotFound) {
-			cfg, err = &config.Config{}, nil
-		}
+	return a, tea.Batch(watch, func() tea.Msg {
+		cfg, conns, err := a.connect(ctx)
 		if err != nil {
 			return welcomeOpenedMsg{err: err}
 		}
-		link, err := welcome.InviteLink(context.Background(), deps.Connectors(cfg, deps.Secrets(cfg)), p.Email)
+		progress.Report(ctx, "Looking up their forum invite link")
+		link, err := welcome.InviteLink(ctx, conns, p.Email)
 		switch {
 		case errors.Is(err, welcome.ErrNoInvite) && inviteToCreate:
 			return welcomeOpenedMsg{err: errors.New("they don't have a forum invite yet. Press g first to create it (with the plan's other changes), then w")}
@@ -590,23 +602,28 @@ func (a App) openWelcome() tea.Cmd {
 		case err != nil:
 			return welcomeOpenedMsg{err: err}
 		}
+		progress.Report(ctx, "Filling in the template and opening it in your browser")
 		e, err := showEmail(welcome.Welcome, cfg, p, who, link)
 		return welcomeOpenedMsg{missing: e.Missing, notes: e.Notes, err: err}
-	}
+	})
 }
 
 // recordWelcomeSent records the webmaster's "yes, I sent it".
-func (a App) recordWelcomeSent() tea.Cmd {
+func (a App) recordWelcomeSent() (App, tea.Cmd) {
+	_, watch, ok := a.begin("Recording the welcome email in the activity log")
+	if !ok {
+		return a, nil
+	}
 	p := *a.onboard.plan
 	p.Steps = slices.Clone(p.Steps)
 	log, logErr := a.activityLog()
-	return func() tea.Msg {
+	return a, tea.Batch(watch, func() tea.Msg {
 		if logErr != nil {
 			return welcomeSentMsg{plan: p, err: logErr}
 		}
 		err := p.WelcomeSent(log)
 		return welcomeSentMsg{plan: p, err: err}
-	}
+	})
 }
 
 // welcomeMsg handles the welcome email's background results.

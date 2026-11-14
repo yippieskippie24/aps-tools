@@ -14,6 +14,7 @@ package roster
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/yippieskippie24/aps-tools/internal/check"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
+	"github.com/yippieskippie24/aps-tools/internal/progress"
 )
 
 // bulkTimeout limits how long one system may take to check everyone.
@@ -186,14 +188,14 @@ func (r Roster) In(g Group) []Entry {
 func (r Roster) Count(g Group) int { return len(r.In(g)) }
 
 // ErrNoSheet means there's no membership sheet to list members from.
-var ErrNoSheet = errors.New("the membership sheet isn't connected, so there's no member list — run: aps-tools setup sheet")
+var ErrNoSheet = errors.New("the membership sheet can't be read, so there's no member list")
 
 // Load lists everyone on the membership sheet and checks them in every
 // other system. READ-ONLY.
 func Load(ctx context.Context, conns []connectors.Connector) (Roster, error) {
 	lister, others := split(conns)
-	if lister == nil || len(lister.Missing()) > 0 {
-		return Roster{}, ErrNoSheet
+	if err := sheetReady(lister); err != nil {
+		return Roster{}, err
 	}
 	r := Roster{Directory: lister.Name(), CheckedAt: time.Now()}
 	for _, c := range others {
@@ -203,6 +205,7 @@ func Load(ctx context.Context, conns []connectors.Connector) (Roster, error) {
 
 	ctx, cancel := context.WithTimeout(ctx, bulkTimeout)
 	defer cancel()
+	progress.Report(ctx, "Reading the membership sheet")
 	people, err := lister.AllMembers(ctx)
 	if err != nil {
 		return Roster{}, errors.New("couldn't read the membership sheet: " + err.Error())
@@ -215,12 +218,14 @@ func Load(ctx context.Context, conns []connectors.Connector) (Roster, error) {
 	// Check every system at once; each checks everyone.
 	results := make([]map[string]connectors.MemberStatus, len(others))
 	problems := make([]string, len(others))
+	done := progress.Counter(ctx, fmt.Sprintf("Checking all %d members in", len(emails)), others)
 	var wg sync.WaitGroup
 	for i, c := range others {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			results[i], problems[i] = checkAll(ctx, c, emails)
+			done(c)
 		}()
 	}
 	wg.Wait()
@@ -254,11 +259,12 @@ func Load(ctx context.Context, conns []connectors.Connector) (Roster, error) {
 // when you don't know their email address. Sorted by last name. READ-ONLY.
 func Directory(ctx context.Context, conns []connectors.Connector) ([]connectors.DirectoryEntry, error) {
 	lister, _ := split(conns)
-	if lister == nil || len(lister.Missing()) > 0 {
-		return nil, ErrNoSheet
+	if err := sheetReady(lister); err != nil {
+		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, bulkTimeout)
 	defer cancel()
+	progress.Report(ctx, "Reading the membership sheet")
 	people, err := lister.AllMembers(ctx)
 	if err != nil {
 		return nil, errors.New("couldn't read the membership sheet: " + err.Error())
@@ -297,6 +303,7 @@ func (r *Roster) Refresh(ctx context.Context, conns []connectors.Connector, emai
 		if !strings.EqualFold(r.Entries[i].Email, email) {
 			continue
 		}
+		progress.Report(ctx, "Re-checking them on the membership sheet")
 		p, sheet, err := lister.LookupMember(ctx, email)
 		if err != nil {
 			return err
@@ -309,6 +316,19 @@ func (r *Roster) Refresh(ctx context.Context, conns []connectors.Connector, emai
 		e.Group = groupOf(e)
 		r.Entries[i] = e
 		return nil
+	}
+	return nil
+}
+
+// sheetReady says why the membership sheet can't be used, or nil. When it's
+// set up but something (like its key) can't be read, it says exactly what,
+// rather than "not connected", e.g. a 1Password prompt that wasn't approved.
+func sheetReady(l lister) error {
+	if l == nil {
+		return ErrNoSheet
+	}
+	if missing := l.Missing(); len(missing) > 0 {
+		return fmt.Errorf("%w. Still needed: %s", ErrNoSheet, connectors.JoinPlain(missing))
 	}
 	return nil
 }

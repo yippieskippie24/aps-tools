@@ -9,9 +9,9 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/yippieskippie24/aps-tools/internal/activity"
-	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/onboard"
+	"github.com/yippieskippie24/aps-tools/internal/progress"
 	"github.com/yippieskippie24/aps-tools/internal/welcome"
 )
 
@@ -80,7 +80,7 @@ func (a App) updateEmail(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		k := *ev.sending
 		ev.sending = nil
 		if key == "y" {
-			return a, a.recordEmailSent(k, ev.person.Email)
+			return a.recordEmailSent(k, ev.person.Email)
 		}
 		ev.notice = "Not recorded as sent. Choose it again to reopen it."
 		return a, nil
@@ -89,8 +89,8 @@ func (a App) updateEmail(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			ev.askResend = false
 		case "y", "n":
-			ev.askResend, ev.opening, ev.notice = false, true, ""
-			return a, tea.Batch(a.openEmailPage(ev.choices[ev.pick], key == "y"), spinTick())
+			ev.askResend = false
+			return a.openEmailPage(ev.choices[ev.pick], key == "y")
 		}
 		return a, nil
 	}
@@ -108,8 +108,7 @@ func (a App) updateEmail(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			ev.askResend, ev.notice = true, ""
 			return a, nil
 		}
-		ev.opening, ev.notice = true, ""
-		return a, tea.Batch(a.openEmailPage(k, false), spinTick())
+		return a.openEmailPage(k, false)
 	}
 	return a, nil
 }
@@ -118,23 +117,25 @@ func (a App) updateEmail(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // member's sheet entry first, for their name, and the forum for their
 // invite or username. With resend, it first has Cloudflare send them a new
 // verification email (the webmaster has just said yes) and logs it.
-func (a App) openEmailPage(k welcome.Kind, resend bool) tea.Cmd {
-	deps, p := a.deps, a.email.person
+func (a App) openEmailPage(k welcome.Kind, resend bool) (App, tea.Cmd) {
+	ctx, watch, ok := a.begin("Opening the " + strings.ToLower(k.Name))
+	if !ok {
+		return a, nil
+	}
+	a.email.opening, a.email.notice = true, ""
+	p := a.email.person
 	log, logErr := a.activityLog()
-	return func() tea.Msg {
-		cfg, err := deps.LoadConfig()
-		if errors.Is(err, config.ErrNotFound) {
-			cfg, err = &config.Config{}, nil
-		}
+	return a, tea.Batch(watch, func() tea.Msg {
+		cfg, conns, err := a.connect(ctx)
 		if err != nil {
 			return emailOpenedMsg{kind: k, err: err}
 		}
-		ctx := context.Background()
-		conns := deps.Connectors(cfg, deps.Secrets(cfg))
 		resent := ""
 		if resend {
+			progress.Report(ctx, "Asking Cloudflare to send a new verification email")
 			resent = resendVerification(ctx, conns, p.Email, log, logErr)
 		}
+		progress.Report(ctx, "Reading their name from the membership sheet")
 		for _, c := range conns {
 			if d, ok := c.(connectors.Directory); ok && len(c.Missing()) == 0 {
 				if found, _, err := d.LookupMember(ctx, p.Email); err == nil && found.Name() != "" {
@@ -142,6 +143,7 @@ func (a App) openEmailPage(k welcome.Kind, resend bool) tea.Cmd {
 				}
 			}
 		}
+		progress.Report(ctx, "Looking them up on the forum")
 		link, err := welcome.InviteLink(ctx, conns, p.Email)
 		switch {
 		case errors.Is(err, welcome.ErrNoInvite) && k.NeedsInvite:
@@ -155,9 +157,10 @@ func (a App) openEmailPage(k welcome.Kind, resend bool) tea.Cmd {
 		if n := p.Name(); n != "" {
 			who = n + " <" + p.Email + ">"
 		}
+		progress.Report(ctx, "Filling in the template and opening it in your browser")
 		email, err := showEmail(k, cfg, p, who, link)
 		return emailOpenedMsg{kind: k, person: p, resent: resent, notes: email.Notes, missing: email.Missing, err: err}
-	}
+	})
 }
 
 // resendVerification has the mailing list system send the member a new
@@ -190,14 +193,18 @@ func resendVerification(ctx context.Context, conns []connectors.Connector, email
 }
 
 // recordEmailSent writes the webmaster's "yes, I sent it" to the log.
-func (a App) recordEmailSent(k welcome.Kind, email string) tea.Cmd {
+func (a App) recordEmailSent(k welcome.Kind, email string) (App, tea.Cmd) {
+	_, watch, ok := a.begin("Recording the " + strings.ToLower(k.Name) + " in the activity log")
+	if !ok {
+		return a, nil
+	}
 	log, logErr := a.activityLog()
-	return func() tea.Msg {
+	return a, tea.Batch(watch, func() tea.Msg {
 		if logErr != nil {
 			return emailSentMsg{kind: k, err: logErr}
 		}
 		return emailSentMsg{kind: k, err: onboard.LogEmailSent(log, email, k.Name)}
-	}
+	})
 }
 
 // emailMsg handles the background results.

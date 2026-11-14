@@ -11,7 +11,6 @@
 package tui
 
 import (
-	"context"
 	"strings"
 	"time"
 
@@ -78,6 +77,10 @@ type App struct {
 	// Activity log screen (see logscreen.go)
 	log logView
 
+	// task is the background work running now, shown along the bottom
+	// (see task.go).
+	task task
+
 	// back is where esc returns to from Check and Onboard: the home menu,
 	// or the Members list when a member was opened from there.
 	back screen
@@ -111,11 +114,16 @@ func spinTick() tea.Cmd {
 
 // runDoctor performs the connection checks in the background, so the screen
 // stays responsive while slow systems answer.
-func (a App) runDoctor() tea.Cmd {
-	deps := a.deps
-	return func() tea.Msg {
-		return doctorDoneMsg{results: doctor.Run(context.Background(), deps)}
+func (a App) runDoctor() (App, tea.Cmd) {
+	ctx, watch, ok := a.begin("Testing connections")
+	if !ok {
+		return a, nil
 	}
+	a.checking, a.results = true, nil
+	deps := a.deps
+	return a, tea.Batch(watch, func() tea.Msg {
+		return doctorDoneMsg{results: doctor.Run(ctx, deps)}
+	})
 }
 
 // Init runs once at startup. We ask the terminal for its background colour
@@ -127,8 +135,16 @@ func (a App) Init() tea.Cmd {
 // Update handles one event and returns the new state.
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	before := a.screen
+	if p, ok := msg.(progressMsg); ok {
+		return a.onProgress(p)
+	}
 	m, cmd := a.update(msg)
 	a = m.(App)
+	// A finished result ends its task, except while onboarding still has
+	// steps to run (each step's result starts the next).
+	if finishesTask(msg) && !(a.onboard.phase == obRunning) {
+		a.finish()
+	}
 	if a.screen != before {
 		a.scroll = 0 // every screen opens at the top
 	}
@@ -150,8 +166,7 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case spinTickMsg:
-		busy := a.onboard.phase == obPlanning || a.onboard.phase == obRunning || a.members.loading || a.email.opening || a.people.loading
-		if !a.checking && !a.member.running && !busy {
+		if !a.task.active {
 			return a, nil
 		}
 		a.spin = (a.spin + 1) % len(spinnerFrames)
@@ -197,6 +212,9 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a, cmd, _ := a.onboardMsg(msg)
 		return a, cmd
+
+	case tea.PasteMsg:
+		return a.paste(msg)
 
 	case tea.KeyPressMsg:
 		// ctrl+c always quits, from anywhere.
@@ -270,9 +288,7 @@ func (a App) choose(item menuItem) (tea.Model, tea.Cmd) {
 		return a.openLog(), nil
 	case actionDoctor:
 		a.screen = screenDoctor
-		a.checking = true
-		a.results = nil
-		return a, tea.Batch(a.runDoctor(), spinTick())
+		return a.runDoctor()
 	case actionHelp:
 		a.screen = screenHelp
 	case actionQuit:
@@ -289,9 +305,7 @@ func (a App) updateDoctor(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.screen = screenHome
 	case "r":
 		if !a.checking {
-			a.checking = true
-			a.results = nil
-			return a, tea.Batch(a.runDoctor(), spinTick())
+			return a.runDoctor()
 		}
 	case "?":
 		a.screen = screenHelp
@@ -316,6 +330,9 @@ func (a App) updateHelp(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (a App) View() tea.View {
 	w := a.frameWidth()
 	body, keys := a.screenContent(w)
+	if a.task.active {
+		keys = a.viewTask() // always show that something is happening
+	}
 
 	page := lipgloss.JoinVertical(lipgloss.Left,
 		a.viewHeader(w),
@@ -415,4 +432,26 @@ func (a App) keyHelp(pairs ...string) string {
 		out = next
 	}
 	return out
+}
+
+// paste sends pasted text (⌘V) to whichever text box is in use. Terminals
+// deliver a paste as one PasteMsg rather than as key presses, so without
+// this, pasting would do nothing.
+func (a App) paste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	switch {
+	case a.screen == screenOnboard && a.onboard.phase == obInput:
+		a.onboard.input, cmd = a.onboard.input.Update(msg)
+		a.onboard.err = ""
+	case a.screen == screenOnboard && a.onboard.phase == obReason:
+		a.onboard.reason, cmd = a.onboard.reason.Update(msg)
+		a.onboard.err = ""
+	case a.screen == screenCheck && a.member.report == nil && !a.member.running:
+		a.member.input, cmd = a.member.input.Update(msg)
+		a.member.cursor, a.member.top, a.member.err = 0, 0, ""
+	case a.screen == screenLog && a.log.editing:
+		a.log.filter, cmd = a.log.filter.Update(msg)
+		a.scroll = 0
+	}
+	return a, cmd
 }

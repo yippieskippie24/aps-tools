@@ -79,3 +79,12 @@ same item*, nothing else needs to change.
 
 Technical reference: the connector is in `internal/connectors/jira/`. It uses Jira's
 `/rest/servicedeskapi/servicedesk/{id}/customer` endpoint, which Atlassian marks "experimental".
+
+## Adding customers (onboarding)
+
+Onboarding adds new members as customers on the desk
+([decision 0017](../decisions/0017-cloudflare-and-jira-onboarding-steps.md)), so your Atlassian
+account must be allowed to add customers (an agent or admin on the desk is). Atlassian emails each
+new customer, either an invitation or a "verify your email" message, depending on the desk's
+**Customer invited** notification (Project settings → Customer notifications). The welcome email
+tells members to expect it.

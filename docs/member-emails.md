@@ -23,7 +23,8 @@ for the member, but **you send it** from your own mail, so you always read it fi
 aps-tools setup email
 ```
 
-It asks for the **link to the forum's Getting Started topics**, creates any templates you don't
+It asks for the **link to the forum's Getting Started topics** and the **link to the forum topic on
+requesting Elevator access** (both go in the welcome email). It creates any templates you don't
 have yet from the built-in examples, and can open the folder they're in. Your templates live next
 to your settings, one file each (`welcome-email.md`, `forum-access-email.md`, …):
 
@@ -94,7 +95,9 @@ Plain text, with a few simple rules (they're also at the top of each file):
 | `{{FORUM_USERNAME}}` | their account, looked up on the forum |
 | `{{FORUM_INVITE_LINK}}` | their personal invite (needs "create invites" in `aps-tools setup discourse`) |
 | `{{GETTING_STARTED_LINK}}` | `aps-tools setup email` |
+| `{{ELEVATOR_ACCESS_LINK}}` | the forum topic on requesting Elevator access (`aps-tools setup email`) |
 | `{{WEBMASTER_NAME}}` | `aps-tools setup webmaster` |
+| `{{HELP_DESK_NAME}}` | the Jira service desk's name (`aps-tools setup jira`) |
 
 You can use any placeholder in any template.
 

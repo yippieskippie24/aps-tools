@@ -95,9 +95,12 @@ Each item is usable on its own, safest first:
    `aps-tools setup email`, `aps-tools email welcome <email>`, and **w** in the onboarding screen. The
    Getting Started link is asked for by `setup email` rather than `setup discourse`, so setting
    it doesn't mean re-approving the forum key. See [member-emails.md](../member-emails.md).
-3. **Mailing list (Cloudflare):** destination address, then `LIST_NEWS`. Tried on the test account
-   first.
-4. **Jira customer.**
+3. **Mailing list (Cloudflare):** destination address, then `LIST_NEWS`. The **destination
+   address** is ✅ **built** ([decision 0017](../decisions/0017-cloudflare-and-jira-onboarding-steps.md)).
+   Adding to `LIST_NEWS` is still to do: test it on the test account first, and the APS list Worker
+   arrives in December.
+4. **Jira customer.** ✅ **Built** ([decision 0017](../decisions/0017-cloudflare-and-jira-onboarding-steps.md)).
+   Atlassian emails new customers, so the welcome email explains it.
 5. **Discourse personal invite link:** ✅ **Built** (brought forward, so the welcome email needs
    no hand editing; [decision 0014](../decisions/0014-discourse-invites-write-access.md)).
    `setup discourse` asks whether the tool may create invites (a read-and-write key) and for the
@@ -180,7 +183,9 @@ July 2027 handover.
 
 ## 6. Welcome email draft
 
-Draft text for review. Once agreed, it becomes the example template:
+The first draft, kept for the record. The current text is the tool's example template
+(`internal/welcome/welcome-email.md`). It has since gained an Elevator section and a line about
+Atlassian's help desk email. See [member-emails.md](../member-emails.md).
 
 > **Subject:** Welcome to APS! Two quick steps to get connected
 >

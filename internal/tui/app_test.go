@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -185,9 +187,10 @@ func TestCheckScreenRunsAndShowsReport(t *testing.T) {
 		}}}
 	}
 	a := New(deps)
-	a, _ = press(t, a, "2")
+	a, cmd := press(t, a, "2")
+	a = settle(t, a, cmd) // let the member list load (no sheet here, so it can't)
 	a = typeText(t, a, "Alex@Example.com")
-	a, cmd := press(t, a, "enter")
+	a, cmd = press(t, a, "enter")
 	if !a.member.running || cmd == nil {
 		t.Fatal("enter should start the check")
 	}
@@ -217,12 +220,22 @@ func TestCheckScreenRunsAndShowsReport(t *testing.T) {
 }
 
 // runBatch runs a command and, if it is a batch (even a batch inside a
-// batch), each command inside it, skipping timers so the test doesn't wait.
+// batch), every command inside it, at the same time, the way Bubble Tea
+// does. Timers are skipped, and a command still waiting after a couple of
+// seconds (e.g. a progress listener with nothing left to report) is left
+// behind, so tests never hang.
 func runBatch(cmd tea.Cmd) []tea.Msg {
 	if cmd == nil {
 		return nil
 	}
-	msg := cmd()
+	got := make(chan tea.Msg, 1)
+	go func() { got <- cmd() }()
+	var msg tea.Msg
+	select {
+	case msg = <-got:
+	case <-time.After(2 * time.Second):
+		return nil
+	}
 	batch, ok := msg.(tea.BatchMsg)
 	if !ok {
 		if _, tick := msg.(spinTickMsg); tick || msg == nil {
@@ -230,10 +243,35 @@ func runBatch(cmd tea.Cmd) []tea.Msg {
 		}
 		return []tea.Msg{msg}
 	}
-	var out []tea.Msg
+	var (
+		mu  sync.Mutex
+		out []tea.Msg
+		wg  sync.WaitGroup
+	)
 	for _, c := range batch {
-		out = append(out, runBatch(c)...)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			msgs := runBatch(c)
+			mu.Lock()
+			out = append(out, msgs...)
+			mu.Unlock()
+		}()
 	}
+	wg.Wait()
+	// Results first, progress after: like the real app, where the work's
+	// result usually arrives after its steps.
+	slices.SortStableFunc(out, func(x, y tea.Msg) int {
+		_, px := x.(progressMsg)
+		_, py := y.(progressMsg)
+		switch {
+		case px && !py:
+			return -1
+		case py && !px:
+			return 1
+		}
+		return 0
+	})
 	return out
 }
 
@@ -925,5 +963,73 @@ func TestCheckListSorting(t *testing.T) {
 	a, _ = press(t, a, "enter")
 	if a.member.who != "Zoe Able" {
 		t.Errorf("enter checked %q, want the highlighted Zoe Able", a.member.who)
+	}
+}
+
+func TestPasteGoesIntoTextBoxes(t *testing.T) {
+	a := tall(t, New(testDeps()))
+	a, _ = a.openOnboard()
+	m, _ := a.Update(tea.PasteMsg{Content: "robin@example.com"})
+	a = m.(App)
+	if a.onboard.input.Value() != "robin@example.com" {
+		t.Errorf("onboard email box: %q", a.onboard.input.Value())
+	}
+
+	a, _ = a.openCheck()
+	m, _ = a.Update(tea.PasteMsg{Content: "robin"})
+	a = m.(App)
+	if a.member.input.Value() != "robin" {
+		t.Errorf("check search box: %q", a.member.input.Value())
+	}
+}
+
+func TestBusyScreensSayWhatTheyAreDoing(t *testing.T) {
+	a := tall(t, New(testDeps()))
+	a, cmd := press(t, a, "2")
+	if !a.task.active || !strings.Contains(a.View().Content, "Reading the member list") {
+		t.Fatalf("opening the member list should show it's working:\n%s", a.View().Content)
+	}
+	// A step reported by the work shows on the bottom line.
+	m, _ := a.Update(progressMsg{gen: a.task.gen, step: "Reading the membership sheet"})
+	a = m.(App)
+	if !strings.Contains(a.View().Content, "Reading the membership sheet") {
+		t.Error("the current step isn't shown")
+	}
+	// Nothing else can start while it runs.
+	if _, _, ok := a.begin("Something else"); ok {
+		t.Error("a second task started while one was running")
+	}
+	a = settle(t, a, cmd)
+	if a.task.active {
+		t.Error("the task should end when its result arrives")
+	}
+}
+
+func TestPressingWTwiceOpensOneEmail(t *testing.T) {
+	opened := 0
+	saved := showEmail
+	t.Cleanup(func() { showEmail = saved })
+	showEmail = func(welcome.Kind, *config.Config, connectors.Person, string, connectors.ForumLink) (welcome.Email, error) {
+		opened++
+		return welcome.Email{}, nil
+	}
+	deps := onboardDeps(t, true, new(int))
+	a := tall(t, New(deps))
+	a, _ = a.openOnboard()
+	a = typeText(t, a, "alex@example.com")
+	a, cmd := press(t, a, "enter")
+	a = settle(t, a, cmd)
+
+	a, first := press(t, a, "w")
+	a, second := press(t, a, "w") // while the first is still running
+	if second != nil {
+		t.Error("a second w started more work while the first was running")
+	}
+	if !strings.Contains(a.View().Content, "Opening the welcome email") {
+		t.Error("no sign that the welcome email is being opened")
+	}
+	a = settle(t, a, first)
+	if opened != 1 {
+		t.Errorf("opened %d emails, want 1", opened)
 	}
 }

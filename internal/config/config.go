@@ -94,6 +94,10 @@ type Discourse struct {
 	// topics, for the welcome email ({{GETTING_STARTED_LINK}}).
 	// "aps-tools setup email" asks for it.
 	GettingStartedURL string `toml:"getting_started_url"`
+	// ElevatorAccessURL is the forum topic explaining how to request access
+	// to Elevator (where members share photos with the Arboretum), for the
+	// welcome email ({{ELEVATOR_ACCESS_LINK}}). "aps-tools setup email" asks.
+	ElevatorAccessURL string `toml:"elevator_access_url"`
 	// CreateInvites lets onboarding create each new member's personal forum
 	// invite. It needs a key with write access ("aps-tools setup discourse"
 	// asks). Off means the tool only reads the forum.

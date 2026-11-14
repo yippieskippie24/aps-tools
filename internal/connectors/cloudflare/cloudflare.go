@@ -354,3 +354,48 @@ func (c *Connector) ruleForwardingTo(ctx context.Context, email string) (string,
 	}
 	return "", false, nil
 }
+
+// PlanOnboard implements connectors.Onboarder: someone who isn't a
+// destination address yet gets added as one. Adding them to the
+// all-members list (LIST_NEWS on the list Worker) isn't automated yet; the
+// plan says so when there's a list they're not on. It changes nothing.
+func (c *Connector) PlanOnboard(ctx context.Context, p connectors.Person, current connectors.MemberStatus) (string, error) {
+	if current.State == connectors.StateOK || current.State == connectors.StatePending {
+		return "", nil
+	}
+	addrs, err := c.client.ListAddresses(ctx, c.cfg.AccountID)
+	if err != nil {
+		return "", err
+	}
+	if dest, _ := findDestination(addrs, p.Email); dest != destMissing {
+		return "", nil // already added: the rest (the list) is by hand for now
+	}
+	action := "Add them as a destination address (Cloudflare emails them a verification link to click)"
+	if lists, err := c.client.LoadLists(ctx, c.cfg.AccountID, c.cfg.ZoneID); err == nil {
+		if all, ok := FindList(lists, c.cfg.MembersListName()); ok && !all.Has(p.Email) {
+			action += ". Adding them to " + all.Address + " is still by hand"
+		}
+	}
+	return action, nil
+}
+
+// Onboard implements connectors.Onboarder: add the member as a destination
+// address, which makes Cloudflare email them a verification link. It checks
+// again first, so someone already added isn't added twice (and doesn't get a
+// second verification email). This CHANGES the account.
+func (c *Connector) Onboard(ctx context.Context, p connectors.Person) (string, error) {
+	addrs, err := c.client.ListAddresses(ctx, c.cfg.AccountID)
+	if err != nil {
+		return "", err
+	}
+	switch dest, _ := findDestination(addrs, p.Email); dest {
+	case destVerified:
+		return "Already a verified destination address; nothing to do.", nil
+	case destPending:
+		return "Already a destination address, waiting for them to verify; nothing to do.", nil
+	}
+	if _, err := c.client.CreateAddress(ctx, c.cfg.AccountID, p.Email); err != nil {
+		return "", errors.New("couldn't add them as a destination address: " + err.Error())
+	}
+	return "Added them as a destination address; Cloudflare is emailing them a verification link.", nil
+}

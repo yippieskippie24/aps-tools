@@ -16,6 +16,7 @@ import (
 
 	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
+	"github.com/yippieskippie24/aps-tools/internal/progress"
 	"github.com/yippieskippie24/aps-tools/internal/secrets"
 )
 
@@ -93,6 +94,7 @@ func Run(ctx context.Context, d Deps) []Result {
 	var results []Result
 
 	// 1. Settings file.
+	progress.Report(ctx, "Reading your settings")
 	path, _ := d.ConfigPath()
 	cfg, err := d.LoadConfig()
 	switch {
@@ -129,10 +131,12 @@ func Run(ctx context.Context, d Deps) []Result {
 	}
 
 	// 3. Where API keys are kept.
+	progress.Report(ctx, "Checking where your API keys are kept (1Password may ask for Touch ID)")
 	store := d.Secrets(cfg)
 	results = append(results, checkSecretStore(cfg, store, d.CheckOnePassword))
 
 	// 4. Outside systems.
+	progress.Report(ctx, "Reading your API keys (1Password may ask for Touch ID)")
 	conns := d.Connectors(cfg, store)
 	if len(conns) == 0 {
 		results = append(results, Result{
@@ -171,12 +175,14 @@ func checkSecretStore(cfg *config.Config, store secrets.Store, checkOP func() er
 // doesn't hold up the rest) and returns results in the original order.
 func testConnectors(ctx context.Context, conns []connectors.Connector) []Result {
 	out := make([]Result, len(conns))
+	done := progress.Counter(ctx, "Testing the connection to", conns)
 	var wg sync.WaitGroup
 	for i, c := range conns {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			out[i] = testOne(ctx, c)
+			done(c)
 		}()
 	}
 	wg.Wait()

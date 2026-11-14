@@ -31,6 +31,7 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/activity"
 	"github.com/yippieskippie24/aps-tools/internal/check"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
+	"github.com/yippieskippie24/aps-tools/internal/progress"
 )
 
 // stepTimeout limits how long any one system may take to answer.
@@ -316,6 +317,7 @@ func prepare(ctx context.Context, conns []connectors.Connector, email, override 
 	// 1. The gate: the membership sheet must say they're vetted, unless
 	// the webmaster overrides it with a reason.
 	dir, others := splitDirectory(conns)
+	progress.Report(ctx, "Checking the membership sheet")
 	plan.Gate = gate(ctx, dir, &plan.Person)
 	switch {
 	case plan.Gate.State == connectors.StateOK:
@@ -338,6 +340,7 @@ func prepare(ctx context.Context, conns []connectors.Connector, email, override 
 	}
 	plan.States = report.States()
 	steps := make([]Step, len(others))
+	progress.Report(ctx, "Working out what each system needs")
 	var wg sync.WaitGroup
 	for i, c := range others {
 		wg.Add(1)
@@ -482,6 +485,7 @@ func (p *Plan) RunStep(ctx context.Context, i int, log *activity.Log) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, stepTimeout)
 	defer cancel()
+	progress.Reportf(ctx, "%s: %s", s.System, s.Action)
 	did, err := s.onboarder.Onboard(ctx, p.Person)
 	entry := activity.Entry{Member: p.Person.Email, System: s.System}
 	if err != nil {

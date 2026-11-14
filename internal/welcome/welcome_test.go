@@ -13,8 +13,10 @@ import (
 func exampleValues() map[string]string {
 	cfg := &config.Config{
 		Webmaster:  config.Webmaster{Name: "Pat Webmaster"},
+		Jira:       config.Jira{ServiceDeskName: "APS Help"},
 		Cloudflare: config.Cloudflare{ZoneName: "example.org"},
-		Discourse:  config.Discourse{URL: "https://forum.example.org", GettingStartedURL: "https://forum.example.org/tag/getting-started"},
+		Discourse: config.Discourse{URL: "https://forum.example.org", GettingStartedURL: "https://forum.example.org/tag/getting-started",
+			ElevatorAccessURL: "https://forum.example.org/t/elevator/25"},
 	}
 	return Values(cfg, connectors.Person{Email: "alex@example.com", FirstName: "Alex", LastName: "Example"})
 }
@@ -24,7 +26,7 @@ func TestRenderExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.To != "alex@example.com" || e.Subject != "Welcome to APS! Two quick steps to get connected" {
+	if e.To != "alex@example.com" || e.Subject != "Welcome to APS! A few quick steps to get connected" {
 		t.Errorf("to %q, subject %q", e.To, e.Subject)
 	}
 	// Only the invite link is unknown until the tool creates invites.

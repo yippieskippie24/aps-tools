@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,7 +9,6 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/yippieskippie24/aps-tools/internal/check"
-	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/roster"
 )
 
@@ -63,39 +60,42 @@ func (a App) openMembers() (App, tea.Cmd) {
 
 // loadRoster checks everyone in the background. Read-only.
 func (a App) loadRoster() (App, tea.Cmd) {
+	ctx, watch, ok := a.begin("Checking everyone on the sheet in every system")
+	if !ok {
+		return a, nil
+	}
 	a.members.loading, a.members.err, a.members.notice = true, "", ""
-	deps := a.deps
 	run := func() tea.Msg {
-		cfg, err := deps.LoadConfig()
-		if errors.Is(err, config.ErrNotFound) {
-			cfg, err = &config.Config{}, nil
-		}
+		_, conns, err := a.connect(ctx)
 		if err != nil {
 			return rosterDoneMsg{err: err}
 		}
-		r, err := roster.Load(context.Background(), deps.Connectors(cfg, deps.Secrets(cfg)))
+		r, err := roster.Load(ctx, conns)
 		return rosterDoneMsg{roster: r, err: err}
 	}
-	return a, tea.Batch(run, spinTick())
+	return a, tea.Batch(watch, run)
 }
 
 // refreshMember re-checks one member (after onboarding them) in the
 // background. The roster is copied so the screen never reads it mid-change.
-func (a App) refreshMember(email string) tea.Cmd {
+func (a App) refreshMember(email string) (App, tea.Cmd) {
 	if a.members.roster == nil {
-		return nil
+		return a, nil
+	}
+	ctx, watch, ok := a.begin("Re-checking " + email + " after onboarding")
+	if !ok {
+		return a, nil
 	}
 	r := *a.members.roster
 	r.Entries = append([]roster.Entry(nil), r.Entries...)
-	deps := a.deps
-	return func() tea.Msg {
-		cfg, err := deps.LoadConfig()
+	return a, tea.Batch(watch, func() tea.Msg {
+		_, conns, err := a.connect(ctx)
 		if err != nil {
 			return memberRefreshedMsg{roster: r, err: err}
 		}
-		err = r.Refresh(context.Background(), deps.Connectors(cfg, deps.Secrets(cfg)), email)
+		err = r.Refresh(ctx, conns, email)
 		return memberRefreshedMsg{roster: r, err: err}
-	}
+	})
 }
 
 // membersMsg handles this screen's background results.

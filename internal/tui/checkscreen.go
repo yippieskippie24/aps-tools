@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -14,7 +12,6 @@ import (
 
 	"github.com/yippieskippie24/aps-tools/internal/check"
 	"github.com/yippieskippie24/aps-tools/internal/clipboard"
-	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/roster"
 )
@@ -119,20 +116,20 @@ func (a App) openCheck() (App, tea.Cmd) {
 
 // loadPeople reads the member list from the sheet in the background.
 func (a App) loadPeople() (App, tea.Cmd) {
+	ctx, watch, ok := a.begin("Reading the member list")
+	if !ok {
+		return a, nil
+	}
 	a.people.loading, a.people.err = true, ""
-	deps := a.deps
 	run := func() tea.Msg {
-		cfg, err := deps.LoadConfig()
-		if errors.Is(err, config.ErrNotFound) {
-			cfg, err = &config.Config{}, nil
-		}
+		_, conns, err := a.connect(ctx)
 		if err != nil {
 			return peopleDoneMsg{err: err}
 		}
-		entries, err := roster.Directory(context.Background(), deps.Connectors(cfg, deps.Secrets(cfg)))
+		entries, err := roster.Directory(ctx, conns)
 		return peopleDoneMsg{entries: entries, err: err}
 	}
-	return a, tea.Batch(run, spinTick())
+	return a, tea.Batch(watch, run)
 }
 
 // peopleMsg stores the loaded member list.
@@ -186,22 +183,22 @@ func (a App) startCheckFor(email, who string) (App, tea.Cmd) {
 		a.member.err = "No one on the sheet matches that. To check someone who isn't on it, type their full email address."
 		return a, nil
 	}
+	ctx, watch, ok := a.begin("Checking " + who)
+	if !ok {
+		return a, nil
+	}
 	a.member.err, a.member.notice, a.member.report = "", "", nil
 	a.member.running, a.member.who = true, who
 	a.member.input.Blur()
-	deps := a.deps
 	run := func() tea.Msg {
-		cfg, err := deps.LoadConfig()
-		if errors.Is(err, config.ErrNotFound) {
-			cfg, err = &config.Config{}, nil
-		}
+		_, conns, err := a.connect(ctx)
 		if err != nil {
 			return checkDoneMsg{err: err}
 		}
-		r, err := check.Run(context.Background(), deps.Connectors(cfg, deps.Secrets(cfg)), email, connectors.NotYetBuilt())
+		r, err := check.Run(ctx, conns, email, connectors.NotYetBuilt())
 		return checkDoneMsg{report: r, err: err}
 	}
-	return a, tea.Batch(run, spinTick())
+	return a, tea.Batch(watch, run)
 }
 
 // checkListHeight is how many member rows fit under the headings.

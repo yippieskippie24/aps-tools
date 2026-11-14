@@ -26,7 +26,9 @@ marks **App vetted** = **Y**. **Don't start steps 2–5 until App vetted is Y.**
 shows this as "Waiting on member" until then. (Long-standing members who started before App vetting
 began don't need it; see the setup guide.) See [setup/google-sheet.md](setup/google-sheet.md).
 
-**2. Mailing list (Cloudflare).** APS email uses Cloudflare Email Routing with a Worker that
+**2. Mailing list (Cloudflare).** **With the tool:** onboarding adds their destination address
+(Cloudflare emails them the verification link). Adding them to the all-members list is still by
+hand, as below. **By hand:** APS email uses Cloudflare Email Routing with a Worker that
 forwards list mail to members. In the Cloudflare dashboard: the APS domain → **Email** →
 **Email Routing** → **Destination addresses** → **Add destination address**. Cloudflare then emails
 the member a verification link; list mail only reaches them **after they click it**. Then add their
@@ -34,8 +36,9 @@ address to the all-members list: **Workers & Pages** → the list Worker → **S
 **Variables and Secrets** → edit **`LIST_NEWS`** (add `, their@address`) → **Deploy**. Add them to
 any other group lists (`LIST_PHOTOS`, …) the same way. See [setup/cloudflare.md](setup/cloudflare.md).
 
-**3. Jira customer.** In Jira, open the APS service desk project → **Customers** → **Add customers**,
-then enter the member's email. Customers do not use any of the 3 licensed agent seats.
+**3. Jira customer.** **With the tool:** onboarding adds them as a customer. Atlassian then emails
+them, and the welcome email says to expect it. **By hand:** in Jira, open the APS service desk
+project → **Customers** → **Add customers**, then enter the member's email. Customers do not use any of the 3 licensed agent seats.
 TBD — confirm whether customers are grouped into an organization.
 
 **4. Discourse.** The forum is **invite-only**, so every member needs an invite. **With the tool:**
