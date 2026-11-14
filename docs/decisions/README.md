@@ -49,3 +49,4 @@ What does this make easier or harder?
 | [0013](0013-members-screen-bulk-checks.md) | The Members screen: bulk checks and an in-memory snapshot |
 | [0014](0014-discourse-invites-write-access.md) | Onboarding creates personal forum invites, with a write-access key |
 | [0015](0015-member-emails-and-page-server.md) | Templates for common member emails, shown by a local page server |
+| [0016](0016-resend-cloudflare-verification.md) | Re-send Cloudflare's verification email by removing and re-adding the address |

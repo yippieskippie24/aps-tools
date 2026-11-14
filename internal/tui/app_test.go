@@ -721,3 +721,60 @@ func TestEmailFromOnboarding(t *testing.T) {
 		t.Errorf("esc should go back to onboarding, got %v", a.screen)
 	}
 }
+
+// fakeMail is a pretend mailing list that can re-send verification emails.
+type fakeMail struct{ resent *int }
+
+func (fakeMail) ID() string                           { return "cloudflare" }
+func (fakeMail) Name() string                         { return "Mailing list (Cloudflare)" }
+func (fakeMail) Missing() []string                    { return nil }
+func (fakeMail) TestConnection(context.Context) error { return nil }
+func (fakeMail) CheckMember(context.Context, string) (connectors.MemberStatus, error) {
+	return connectors.MemberStatus{State: connectors.StatePending}, nil
+}
+func (f fakeMail) ResendVerification(context.Context, string) (string, error) {
+	*f.resent++
+	return "Cloudflare is sending them a new verification email.", nil
+}
+
+func TestVerifyEmailOffersToResend(t *testing.T) {
+	saved := showEmail
+	t.Cleanup(func() { showEmail = saved })
+	showEmail = func(welcome.Kind, *config.Config, connectors.Person, string, connectors.ForumLink) (welcome.Email, error) {
+		return welcome.Email{}, nil
+	}
+	for _, answer := range []string{"n", "y"} {
+		resent := 0
+		deps := onboardDeps(t, true, new(int))
+		deps.Connectors = func(*config.Config, secrets.Store) []connectors.Connector {
+			return []connectors.Connector{fakeMail{&resent}}
+		}
+		a := tall(t, New(deps))
+		a = a.openEmail(connectors.Person{Email: "pat@example.com", FirstName: "Pat"}, connectors.StateOK,
+			map[string]connectors.State{"cloudflare": connectors.StatePending, "discourse": connectors.StateOK})
+		if a.email.choices[0].ID != welcome.VerifyEmail.ID {
+			t.Fatalf("suggested %s", a.email.choices[0].ID)
+		}
+		a, _ = press(t, a, "enter")
+		if !a.email.askResend || !strings.Contains(a.View().Content, "new verification email?") {
+			t.Fatalf("verify email for an unverified address should ask about re-sending first")
+		}
+		a, cmd := press(t, a, answer)
+		a = settle(t, a, cmd)
+		path, _ := deps.ConfigPath()
+		lines, _ := activity.Open(filepath.Join(filepath.Dir(path), activity.FileName)).Recent(5)
+		switch answer {
+		case "n":
+			if resent != 0 || len(lines) != 0 || a.email.sending == nil {
+				t.Errorf("n: resent %d, log %v, sending %v", resent, lines, a.email.sending)
+			}
+		case "y":
+			if resent != 1 || len(lines) != 1 || !strings.Contains(lines[0], "Mailing list (Cloudflare)\tok\tCloudflare is sending") {
+				t.Errorf("y: resent %d, log %v", resent, lines)
+			}
+			if !strings.Contains(a.email.notice, "✓ Cloudflare is sending") || a.email.sending == nil {
+				t.Errorf("y: notice %q", a.email.notice)
+			}
+		}
+	}
+}

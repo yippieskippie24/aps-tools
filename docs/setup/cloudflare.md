@@ -90,7 +90,7 @@ Worker exists, it reports 1 and 2 and says the list couldn't be checked.
 >
 > | Permission | Why Phase 2 needs Edit |
 > |---|---|
-> | Email Routing Addresses | Add the member as a destination address. Cloudflare then emails them the verification link. |
+> | Email Routing Addresses | Add the member as a destination address. Cloudflare then emails them the verification link. **Already used** to re-send a verification email when you send "Verify your email" ([decision 0016](../decisions/0016-resend-cloudflare-verification.md)). |
 > | Workers Scripts | Add their address to `LIST_NEWS` (and other `LIST_` variables) on the list Worker. |
 >
 > When that feature arrives, **edit this same token** (API Tokens → ⋯ → **Edit**). Editing

@@ -14,8 +14,10 @@ import (
 	"time"
 )
 
-// This file is the low-level conversation with Cloudflare's API. Every call
-// is a read-only GET. API reference: https://developers.cloudflare.com/api/
+// This file is the low-level conversation with Cloudflare's API. Reads are
+// GETs; the only changes are adding and removing a destination address
+// (send, below), used to re-send a member's verification email.
+// API reference: https://developers.cloudflare.com/api/
 
 // apiBase is Cloudflare's API address. Tests point the client elsewhere.
 const apiBase = "https://api.cloudflare.com/client/v4"
@@ -193,6 +195,7 @@ func (c *Client) ListZones(ctx context.Context) ([]Zone, error) {
 // Address is an Email Routing destination address: an inbox Cloudflare is
 // allowed to forward mail to, once its owner has verified it.
 type Address struct {
+	ID       string `json:"id"`
 	Email    string `json:"email"`
 	Created  string `json:"created"`
 	Verified string `json:"verified"` // empty = not verified yet
@@ -216,6 +219,66 @@ func (c *Client) ListAddresses(ctx context.Context, accountID string) ([]Address
 			return all, nil
 		}
 	}
+}
+
+// send makes a change (POST or DELETE) and decodes the answer's "result"
+// into out (if not nil). Errors are explained like reads.
+func (c *Client) send(ctx context.Context, method, path string, body, out any) error {
+	var reader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = strings.NewReader(string(data))
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
+	if err != nil {
+		return fmt.Errorf("couldn't build a request for Cloudflare: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return errors.New("couldn't reach Cloudflare — check your internet connection")
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var env envelope
+	if json.Unmarshal(data, &env) != nil {
+		if resp.StatusCode < 200 || resp.StatusCode > 299 {
+			return explainStatus(resp.StatusCode)
+		}
+		return errors.New("Cloudflare sent back something unexpected")
+	}
+	if !env.Success || resp.StatusCode < 200 || resp.StatusCode > 299 {
+		if len(env.Errors) > 0 {
+			return explainAPIErrors(env.Errors)
+		}
+		return explainStatus(resp.StatusCode)
+	}
+	if out != nil && len(env.Result) > 0 {
+		if err := json.Unmarshal(env.Result, out); err != nil {
+			return fmt.Errorf("couldn't understand Cloudflare's answer: %w", err)
+		}
+	}
+	return nil
+}
+
+// CreateAddress adds a destination address, which makes Cloudflare email
+// its owner a verification link. This CHANGES the account.
+func (c *Client) CreateAddress(ctx context.Context, accountID, email string) (Address, error) {
+	var a Address
+	err := c.send(ctx, http.MethodPost, "/accounts/"+url.PathEscape(accountID)+"/email/routing/addresses",
+		map[string]string{"email": email}, &a)
+	return a, err
+}
+
+// DeleteAddress removes a destination address. This CHANGES the account.
+func (c *Client) DeleteAddress(ctx context.Context, accountID, id string) error {
+	return c.send(ctx, http.MethodDelete, "/accounts/"+url.PathEscape(accountID)+"/email/routing/addresses/"+url.PathEscape(id), nil, nil)
 }
 
 // RoutingSettings says whether Email Routing is switched on for a zone.

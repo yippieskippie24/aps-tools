@@ -205,3 +205,15 @@ type MemberLister interface {
 	Connector
 	AllMembers(ctx context.Context) ([]DirectoryEntry, error)
 }
+
+// VerificationResender is implemented by a system that can have the member
+// sent a fresh verification email (the mailing list: Cloudflare). It
+// CHANGES the system, so callers must ask the webmaster first. It checks
+// before acting, and refuses (with an error saying why) when there's
+// nothing to re-send or it isn't safe.
+type VerificationResender interface {
+	Connector
+	// ResendVerification makes the system email the member a new
+	// verification link, and says what it did.
+	ResendVerification(ctx context.Context, email string) (string, error)
+}

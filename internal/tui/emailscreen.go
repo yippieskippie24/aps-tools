@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/yippieskippie24/aps-tools/internal/activity"
 	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/onboard"
@@ -31,12 +32,17 @@ type emailView struct {
 	sending *welcome.Kind  // the email that's open: "Did you send it?"
 	notice  string
 	back    screen // where esc returns to
+	// states is what the tool knew about them in each system.
+	states map[string]connectors.State
+	// askResend: "Also have Cloudflare send a new verification email?"
+	askResend bool
 }
 
 // emailOpenedMsg reports that the email was opened (or why not).
 type emailOpenedMsg struct {
 	kind    welcome.Kind
 	person  connectors.Person
+	resent  string // what re-sending the verification email did, if asked
 	notes   []string
 	missing []string
 	err     error
@@ -59,7 +65,7 @@ func (a App) openEmail(p connectors.Person, sheet connectors.State, states map[s
 			choices = append(choices, k)
 		}
 	}
-	a.email = emailView{person: p, choices: choices, back: a.screen}
+	a.email = emailView{person: p, choices: choices, back: a.screen, states: states}
 	a.screen = screenEmail
 	return a
 }
@@ -78,6 +84,15 @@ func (a App) updateEmail(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		ev.notice = "Not recorded as sent. Choose it again to reopen it."
 		return a, nil
+	case ev.askResend:
+		switch key {
+		case "esc":
+			ev.askResend = false
+		case "y", "n":
+			ev.askResend, ev.opening, ev.notice = false, true, ""
+			return a, tea.Batch(a.openEmailPage(ev.choices[ev.pick], key == "y"), spinTick())
+		}
+		return a, nil
 	}
 	switch key {
 	case "esc", "q":
@@ -87,17 +102,25 @@ func (a App) updateEmail(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		ev.pick = (ev.pick + 1) % len(ev.choices)
 	case "enter":
+		k := ev.choices[ev.pick]
+		if k.ID == welcome.VerifyEmail.ID && ev.states["cloudflare"] == connectors.StatePending {
+			// Re-sending changes Cloudflare, so ask first.
+			ev.askResend, ev.notice = true, ""
+			return a, nil
+		}
 		ev.opening, ev.notice = true, ""
-		return a, tea.Batch(a.openEmailPage(ev.choices[ev.pick]), spinTick())
+		return a, tea.Batch(a.openEmailPage(k, false), spinTick())
 	}
 	return a, nil
 }
 
 // openEmailPage builds and opens the email in the background. It reads the
 // member's sheet entry first, for their name, and the forum for their
-// invite or username.
-func (a App) openEmailPage(k welcome.Kind) tea.Cmd {
+// invite or username. With resend, it first has Cloudflare send them a new
+// verification email (the webmaster has just said yes) and logs it.
+func (a App) openEmailPage(k welcome.Kind, resend bool) tea.Cmd {
 	deps, p := a.deps, a.email.person
+	log, logErr := a.activityLog()
 	return func() tea.Msg {
 		cfg, err := deps.LoadConfig()
 		if errors.Is(err, config.ErrNotFound) {
@@ -108,6 +131,10 @@ func (a App) openEmailPage(k welcome.Kind) tea.Cmd {
 		}
 		ctx := context.Background()
 		conns := deps.Connectors(cfg, deps.Secrets(cfg))
+		resent := ""
+		if resend {
+			resent = resendVerification(ctx, conns, p.Email, log, logErr)
+		}
 		for _, c := range conns {
 			if d, ok := c.(connectors.Directory); ok && len(c.Missing()) == 0 {
 				if found, _, err := d.LookupMember(ctx, p.Email); err == nil && found.Name() != "" {
@@ -129,8 +156,37 @@ func (a App) openEmailPage(k welcome.Kind) tea.Cmd {
 			who = n + " <" + p.Email + ">"
 		}
 		email, err := showEmail(k, cfg, p, who, link)
-		return emailOpenedMsg{kind: k, person: p, notes: email.Notes, missing: email.Missing, err: err}
+		return emailOpenedMsg{kind: k, person: p, resent: resent, notes: email.Notes, missing: email.Missing, err: err}
 	}
+}
+
+// resendVerification has the mailing list system send the member a new
+// verification email, records the attempt in the activity log, and
+// returns a line saying how it went. Nothing is changed if the log can't
+// be written.
+func resendVerification(ctx context.Context, conns []connectors.Connector, email string, log *activity.Log, logErr error) string {
+	if logErr != nil {
+		return "✗ Didn't re-send the verification email: the activity log can't be written (" + logErr.Error() + ")."
+	}
+	for _, c := range conns {
+		r, ok := c.(connectors.VerificationResender)
+		if !ok || len(c.Missing()) > 0 {
+			continue
+		}
+		did, err := r.ResendVerification(ctx, email)
+		entry := activity.Entry{Member: email, System: c.Name(), OK: err == nil, What: did}
+		if err != nil {
+			entry.What = "Re-send verification email: " + err.Error()
+		}
+		if lerr := log.Add(entry); lerr != nil {
+			return "! " + did + " (but it couldn't be recorded in the activity log: " + lerr.Error() + ")"
+		}
+		if err != nil {
+			return "✗ Couldn't re-send the verification email: " + err.Error()
+		}
+		return "✓ " + did
+	}
+	return "✗ Couldn't re-send the verification email: the mailing list (Cloudflare) isn't connected."
 }
 
 // recordEmailSent writes the webmaster's "yes, I sent it" to the log.
@@ -154,12 +210,16 @@ func (a App) emailMsg(msg tea.Msg) App {
 			ev.person = msg.person
 		}
 		if msg.err != nil {
-			ev.notice = "Couldn't open the " + strings.ToLower(msg.kind.Name) + ": " + msg.err.Error()
+			ev.notice = strings.TrimSpace(msg.resent + " Couldn't open the " + strings.ToLower(msg.kind.Name) + ": " + msg.err.Error())
 			return a
 		}
 		k := msg.kind
 		ev.sending = &k
-		parts := append([]string{}, msg.notes...)
+		var parts []string
+		if msg.resent != "" {
+			parts = append(parts, msg.resent)
+		}
+		parts = append(parts, msg.notes...)
 		if len(msg.missing) > 0 {
 			parts = append(parts, "Fill in after pasting (highlighted in the email): {{"+strings.Join(msg.missing, "}}, {{")+"}}")
 		}
@@ -181,6 +241,8 @@ func (a App) emailKeys() string {
 		return "  " + a.styles.subtle.Render("Opening it in your browser…")
 	case a.email.sending != nil:
 		return a.keyHelp("y", "yes, I sent it", "n", "not yet")
+	case a.email.askResend:
+		return a.keyHelp("y", "yes, re-send it too", "n", "no, just the email", "esc", "cancel")
 	}
 	return a.keyHelp("↑/↓", "choose", "enter", "open it", "esc", "back")
 }
@@ -206,6 +268,11 @@ func (a App) viewEmail(w int) string {
 	case ev.opening:
 		spinner := lipgloss.NewStyle().Foreground(s.p.accent).Render(spinnerFrames[a.spin])
 		b.WriteString(spinner + " " + s.subtle.Render("Filling it in and opening it…"))
+		return b.String()
+	case ev.askResend:
+		box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(s.p.warn).Padding(0, 1).Width(inner)
+		b.WriteString(box.Render(s.text.Bold(true).Render("Also have Cloudflare send them a new verification email?") + "\n" +
+			s.subtle.Width(inner-4).Render("Their address isn't verified yet. Cloudflare can't re-send by itself, so the tool removes their unverified address and adds it again, which makes Cloudflare email them a fresh link. Nothing reaches them until they verify, so their mail isn't affected. It's recorded in the activity log.")))
 		return b.String()
 	case ev.sending != nil:
 		box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(s.p.accent).Padding(0, 1).Width(inner)

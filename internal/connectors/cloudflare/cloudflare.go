@@ -17,6 +17,7 @@ package cloudflare
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -275,4 +276,81 @@ func (c *Connector) domain() string {
 		return c.cfg.ZoneName
 	}
 	return "the APS domain"
+}
+
+// ResendVerification implements connectors.VerificationResender.
+// Cloudflare's API can't re-send a verification email, so this does what
+// its documentation suggests instead: remove the member's still-unverified
+// destination address and add it again, which makes Cloudflare send a new
+// one. Nothing is forwarded to an unverified address, so mail delivery
+// doesn't change. It checks first, and refuses when:
+//   - the address isn't a destination address (onboarding adds it);
+//   - it's already verified (nothing to re-send, and removing it would
+//     stop their mail);
+//   - a routing rule forwards to it (removing it could break the rule).
+//
+// This CHANGES the account: callers must ask the webmaster first.
+func (c *Connector) ResendVerification(ctx context.Context, email string) (string, error) {
+	addrs, err := c.client.ListAddresses(ctx, c.cfg.AccountID)
+	if err != nil {
+		return "", err
+	}
+	var addr Address
+	for _, a := range addrs {
+		if strings.EqualFold(a.Email, email) {
+			addr = a
+		}
+	}
+	switch {
+	case addr.Email == "":
+		return "", errors.New("they aren't a destination address yet, so there's nothing to re-send (onboarding adds them)")
+	case addr.IsVerified():
+		return "", errors.New("their address is already verified, so there's nothing to re-send")
+	case addr.ID == "":
+		return "", errors.New("Cloudflare didn't say which address record this is; re-send it from the dashboard instead (Email → Email Routing → Destination addresses)")
+	}
+	if rule, used, err := c.ruleForwardingTo(ctx, email); err != nil {
+		return "", errors.New("couldn't check the routing rules first: " + err.Error())
+	} else if used {
+		return "", fmt.Errorf("the routing rule %q forwards to this address, so the tool won't remove it; re-send from the dashboard instead (Email → Email Routing → Destination addresses)", rule)
+	}
+
+	if err := c.client.DeleteAddress(ctx, c.cfg.AccountID, addr.ID); err != nil {
+		return "", errors.New("couldn't remove the unverified address: " + err.Error())
+	}
+	if _, err := c.client.CreateAddress(ctx, c.cfg.AccountID, addr.Email); err != nil {
+		return "", errors.New("removed their unverified address but couldn't add it again: " + err.Error() +
+			". Add it back by hand: Cloudflare → Email → Email Routing → Destination addresses → Add destination address")
+	}
+	return "Cloudflare is sending them a new verification email (their unverified address was removed and added again).", nil
+}
+
+// ruleForwardingTo reports whether a routing rule (or the catch-all)
+// forwards mail straight to email, and the rule's name.
+func (c *Connector) ruleForwardingTo(ctx context.Context, email string) (string, bool, error) {
+	rules, err := c.client.ListRules(ctx, c.cfg.ZoneID)
+	if err != nil {
+		return "", false, err
+	}
+	if catchAll, err := c.client.GetCatchAll(ctx, c.cfg.ZoneID); err == nil {
+		catchAll.Name = "catch-all"
+		rules = append(rules, catchAll)
+	}
+	for _, r := range rules {
+		for _, a := range r.Actions {
+			if a.Type != "forward" {
+				continue
+			}
+			for _, v := range a.Value {
+				if strings.EqualFold(v, email) {
+					name := r.Name
+					if name == "" {
+						name = "(unnamed)"
+					}
+					return name, true, nil
+				}
+			}
+		}
+	}
+	return "", false, nil
 }

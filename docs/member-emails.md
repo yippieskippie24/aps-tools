@@ -58,9 +58,13 @@ The email opens in your browser:
    forum invite**. Emails that link to an invite need it to exist first. Onboarding creates it
    when you press **Go**, and the command line offers to create it. Anything the tool still can't
    fill in (a misspelt placeholder, say) is **highlighted in yellow** and listed at the top.
-3. A blue note appears if the email doesn't seem to fit. For example: a welcome email for someone
+3. **Verify your email** also offers to have Cloudflare **send them a new verification email**,
+   when their address is still unverified. Cloudflare can't re-send by itself, so on a yes the tool
+   removes their unverified address and adds it again. It checks first that this is safe, and it's
+   recorded in the activity log ([decision 0016](decisions/0016-resend-cloudflare-verification.md)).
+4. A blue note appears if the email doesn't seem to fit. For example: a welcome email for someone
    who already has a forum account, or forum help for someone who doesn't have one.
-4. Read it over and send it, then answer **"Did you send it?"** in the tool. A yes is recorded in
+5. Read it over and send it, then answer **"Did you send it?"** in the tool. A yes is recorded in
    the activity log (`aps-tools log`). The tool can't see your Mail, so it relies on your answer.
 
 ## The template format

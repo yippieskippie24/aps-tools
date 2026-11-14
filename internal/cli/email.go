@@ -92,6 +92,11 @@ func runEmail(cmd *cobra.Command, k welcome.Kind, address string) error {
 	if err != nil {
 		return err
 	}
+	if k.ID == welcome.VerifyEmail.ID {
+		if err := offerResend(cmd, conns, email); err != nil {
+			return err
+		}
+	}
 	e, created, err := k.ForMember(cfg, person, link)
 	if err != nil {
 		return err
@@ -206,4 +211,59 @@ func inviteLinkFor(cmd *cobra.Command, cfg *config.Config, conns []connectors.Co
 	}
 	lipgloss.Fprintln(out, okStyle.Render("✓ ")+did)
 	return welcome.InviteLink(cmd.Context(), conns, p.Email)
+}
+
+// offerResend asks whether to have Cloudflare send the member a new
+// verification email, when their address is still unverified, and does it
+// on a yes (recording it in the activity log). It's a change, so it only
+// happens in a terminal, after asking.
+func offerResend(cmd *cobra.Command, conns []connectors.Connector, email string) error {
+	out := cmd.OutOrStdout()
+	if !term.IsTerminal(os.Stdin.Fd()) {
+		return nil
+	}
+	for _, c := range conns {
+		r, ok := c.(connectors.VerificationResender)
+		if !ok || len(c.Missing()) > 0 {
+			continue
+		}
+		st, err := c.CheckMember(cmd.Context(), email)
+		if err != nil || st.State != connectors.StatePending {
+			return nil // only for an address that's waiting to be verified
+		}
+		resend := true
+		ask := huh.NewForm(huh.NewGroup(huh.NewConfirm().
+			Title("Also have Cloudflare send them a new verification email?").
+			Description("Their address isn't verified yet. Cloudflare can't re-send by itself, so the tool\n" +
+				"removes their unverified address and adds it again, which makes Cloudflare email\n" +
+				"them a fresh link. Their mail isn't affected. It's recorded in the activity log.").
+			Affirmative("Yes, re-send it").
+			Negative("No, just the email").
+			Value(&resend))).WithTheme(formTheme)
+		if err := ask.RunWithContext(cmd.Context()); err != nil && !errors.Is(err, huh.ErrUserAborted) {
+			return err
+		}
+		if !resend {
+			return nil
+		}
+		log, err := activity.Default()
+		if err != nil {
+			return err
+		}
+		did, err := r.ResendVerification(cmd.Context(), email)
+		entry := activity.Entry{Member: email, System: c.Name(), OK: err == nil, What: did}
+		if err != nil {
+			entry.What = "Re-send verification email: " + err.Error()
+		}
+		if lerr := log.Add(entry); lerr != nil {
+			return lerr
+		}
+		if err != nil {
+			lipgloss.Fprintln(out, failStyle.Render("✗ ")+"Couldn't re-send the verification email: "+err.Error())
+			return nil
+		}
+		lipgloss.Fprintln(out, okStyle.Render("✓ ")+did)
+		return nil
+	}
+	return nil
 }
