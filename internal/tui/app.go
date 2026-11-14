@@ -32,6 +32,7 @@ const (
 	screenCheck
 	screenOnboard
 	screenMembers
+	screenEmail
 )
 
 // App is the whole application's state (the Bubble Tea "model").
@@ -64,6 +65,9 @@ type App struct {
 
 	// Members screen (see membersscreen.go)
 	members membersView
+
+	// Email a member screen (see emailscreen.go)
+	email emailView
 
 	// back is where esc returns to from Check and Onboard: the home menu,
 	// or the Members list when a member was opened from there.
@@ -136,7 +140,7 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case spinTickMsg:
-		busy := a.onboard.phase == obPlanning || a.onboard.phase == obRunning || a.members.loading || a.members.opening
+		busy := a.onboard.phase == obPlanning || a.onboard.phase == obRunning || a.members.loading || a.email.opening
 		if !a.checking && !a.member.running && !busy {
 			return a, nil
 		}
@@ -165,8 +169,8 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
-	case memberEmailOpenedMsg, memberEmailSentMsg:
-		return a.memberEmailMsg(msg), nil
+	case emailOpenedMsg, emailSentMsg:
+		return a.emailMsg(msg), nil
 
 	case rosterDoneMsg, memberRefreshedMsg:
 		return a.membersMsg(msg), nil
@@ -202,6 +206,8 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.updateOnboard(msg)
 		case screenMembers:
 			return a.updateMembers(msg)
+		case screenEmail:
+			return a.updateEmail(msg)
 		}
 	}
 	return a, nil
@@ -322,6 +328,8 @@ func (a App) screenContent(w int) (body, keys string) {
 		return a.viewOnboard(w), a.onboardKeys()
 	case screenMembers:
 		return a.viewMembers(w), a.membersKeys()
+	case screenEmail:
+		return a.viewEmail(w), a.emailKeys()
 	}
 	return "", ""
 }

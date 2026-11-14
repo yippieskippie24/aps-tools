@@ -38,7 +38,7 @@ aps-tools --help                   # list every command
 Inside the app: arrow keys (or `j`/`k`) to move, `Enter` to choose, `?` for help, `q` to go back or quit.
 The app fills your Terminal window and scrolls long screens. Start with **1 Members**: everyone on
 the membership sheet, grouped by what they still need (←/→ switches group, `Enter` onboards the
-highlighted member).
+highlighted member, `e` emails them).
 
 ## Documentation
 

@@ -119,6 +119,12 @@ func (a App) updateCheck(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.openCheck()
 	case "r":
 		return a.startCheck(mc.report.Email)
+	case "e":
+		sheet := connectors.StateOK
+		if st, ok := mc.report.States()["sheet"]; ok {
+			sheet = st
+		}
+		return a.openEmail(connectors.Person{Email: mc.report.Email}, sheet, mc.report.States()), nil
 	case "c":
 		text := mc.report.PlainText()
 		return a, func() tea.Msg { return copiedMsg{err: clipboard.Copy(text)} }
@@ -136,7 +142,7 @@ func (a App) checkKeys() string {
 	case a.member.report == nil:
 		return a.keyHelp("enter", "check", "esc", "back")
 	default:
-		return a.keyHelp("n", "new check", "r", "re-check", "c", "copy report", "esc", "back")
+		return a.keyHelp("e", "email them", "n", "new check", "r", "re-check", "c", "copy report", "esc", "back")
 	}
 }
 

@@ -233,7 +233,7 @@ func Load(ctx context.Context, conns []connectors.Connector) (Roster, error) {
 	for _, p := range people {
 		e := Entry{Person: p.Person, Sheet: p.Status}
 		for i, c := range others {
-			e.Systems = append(e.Systems, check.SystemResult{System: c.Name(), MemberStatus: results[i][p.Person.Email]})
+			e.Systems = append(e.Systems, check.SystemResult{System: c.Name(), ID: c.ID(), MemberStatus: results[i][p.Person.Email]})
 		}
 		e.Group = groupOf(e)
 		r.Entries = append(r.Entries, e)

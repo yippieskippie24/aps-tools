@@ -144,6 +144,9 @@ type Plan struct {
 	Steps []Step
 	// PreparedAt is when the systems were checked.
 	PreparedAt time.Time
+	// States is each system's state when the plan was made, keyed by its
+	// machine name (e.g. "discourse"), for suggesting an email.
+	States map[string]connectors.State
 }
 
 // Count returns how many steps are of kind k.
@@ -333,6 +336,7 @@ func prepare(ctx context.Context, conns []connectors.Connector, email, override 
 	if err != nil {
 		return plan, err
 	}
+	plan.States = report.States()
 	steps := make([]Step, len(others))
 	var wg sync.WaitGroup
 	for i, c := range others {

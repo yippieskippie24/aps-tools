@@ -128,6 +128,13 @@ func TestWritePreviews(t *testing.T) {
 		m, _ = big.Update(tea.WindowSizeMsg{Width: 130, Height: 30})
 		write("members-wide", membersPreview(m.(App)))
 
+		em := a
+		em.screen = screenMembers
+		em = em.openEmail(connectors.Person{Email: "jordan.sample@example.com", FirstName: "Jordan", LastName: "Sample"},
+			connectors.StateOK, map[string]connectors.State{"cloudflare": connectors.StatePending, "discourse": connectors.StateOK})
+		em.email.pick = 1
+		write("email", em)
+
 		help := a
 		help.screen = screenHelp
 		m, _ = help.Update(tea.WindowSizeMsg{Width: 84, Height: 34})

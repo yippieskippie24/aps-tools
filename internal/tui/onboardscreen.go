@@ -334,6 +334,14 @@ func (a App) updateOnboard(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if a.welcomeAvailable() {
 			return a, a.openWelcome()
 		}
+	case "e":
+		if ob.phase == obPlan || ob.phase == obDone {
+			sheet := ob.plan.Gate.State
+			if ob.plan.Ready {
+				sheet = connectors.StateOK // vetted, or overridden
+			}
+			return a.openEmail(ob.plan.Person, sheet, ob.plan.States), nil
+		}
 	case "c":
 		text := ob.plan.PlainText()
 		return a, func() tea.Msg { return obCopiedMsg{err: clipboard.Copy(text)} }
@@ -361,20 +369,20 @@ func (a App) onboardKeys() string {
 		return a.keyHelp("y", "yes, I sent it", "n", "not yet")
 	case obDone:
 		if a.welcomeAvailable() {
-			return a.keyHelp("w", "welcome email", "r", "check again", "c", "copy", "n", "next member", "esc", "back")
+			return a.keyHelp("w", "welcome email", "e", "other emails", "r", "check again", "n", "next member", "esc", "back")
 		}
-		return a.keyHelp("r", "check again", "c", "copy", "n", "next member", "esc", "back")
+		return a.keyHelp("e", "email them", "r", "check again", "c", "copy", "n", "next member", "esc", "back")
 	}
 	if ob.plan != nil && ob.plan.Ready && ob.plan.Next() >= 0 {
-		return a.keyHelp("g", "go", "w", "welcome email", "c", "copy checklist", "r", "re-check", "esc", "back")
+		return a.keyHelp("g", "go", "w", "welcome email", "e", "other emails", "c", "copy checklist", "esc", "back")
 	}
 	if a.welcomeAvailable() {
-		return a.keyHelp("w", "welcome email", "c", "copy checklist", "r", "re-check", "n", "new", "esc", "back")
+		return a.keyHelp("w", "welcome email", "e", "other emails", "c", "copy checklist", "r", "re-check", "esc", "back")
 	}
 	if ob.plan != nil && ob.plan.CanOverride() {
-		return a.keyHelp("o", "override", "r", "re-check", "n", "new", "esc", "back")
+		return a.keyHelp("o", "override", "e", "email them", "r", "re-check", "n", "new", "esc", "back")
 	}
-	return a.keyHelp("c", "copy checklist", "r", "re-check", "n", "new", "esc", "back")
+	return a.keyHelp("e", "email them", "c", "copy checklist", "r", "re-check", "n", "new", "esc", "back")
 }
 
 func (a App) viewOnboard(w int) string {

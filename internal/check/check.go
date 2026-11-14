@@ -26,6 +26,8 @@ const systemTimeout = 20 * time.Second
 type SystemResult struct {
 	// System is the human name of the system, e.g. "Jira Service Management".
 	System string
+	// ID is the system's machine name, e.g. "jira".
+	ID string
 	// Status is what the system said about the member.
 	connectors.MemberStatus
 }
@@ -72,7 +74,7 @@ func Run(ctx context.Context, conns []connectors.Connector, email string, notYet
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i] = SystemResult{System: c.Name(), MemberStatus: checkOne(ctx, c, email)}
+			results[i] = SystemResult{System: c.Name(), ID: c.ID(), MemberStatus: checkOne(ctx, c, email)}
 		}()
 	}
 	wg.Wait()
@@ -111,6 +113,16 @@ func checkOne(ctx context.Context, c connectors.Connector, email string) connect
 		}
 	}
 	return st
+}
+
+// States is each system's state, keyed by its machine name (e.g.
+// "discourse"), for suggesting which email fits the member.
+func (r Report) States() map[string]connectors.State {
+	out := map[string]connectors.State{}
+	for _, res := range r.Results {
+		out[res.ID] = res.State
+	}
+	return out
 }
 
 // Worst returns the most serious state in the report (StateOK if empty).

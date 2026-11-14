@@ -673,8 +673,8 @@ func TestEmailFromMembersScreen(t *testing.T) {
 		a, _ = press(t, a, "right")
 	}
 	a, _ = press(t, a, "e")
-	if !a.members.picking || a.members.choices[0].ID != welcome.ApplicationInProgress.ID {
-		t.Fatalf("picker: %v %+v", a.members.picking, a.members.choices)
+	if a.screen != screenEmail || a.email.choices[0].ID != welcome.ApplicationInProgress.ID {
+		t.Fatalf("e should open the Email screen with the suggestion first: screen %v, %+v", a.screen, a.email.choices)
 	}
 	view := a.View().Content
 	if !strings.Contains(view, "Application in progress") || !strings.Contains(view, "suggested") || !strings.Contains(view, "Changing your email address") {
@@ -683,8 +683,8 @@ func TestEmailFromMembersScreen(t *testing.T) {
 
 	a, cmd = press(t, a, "enter")
 	a = settle(t, a, cmd)
-	if len(opened) != 1 || opened[0] != "application-in-progress ned@example.com" || a.members.sending == nil {
-		t.Fatalf("opened %v, sending %v", opened, a.members.sending)
+	if len(opened) != 1 || opened[0] != "application-in-progress ned@example.com" || a.email.sending == nil {
+		t.Fatalf("opened %v, sending %v", opened, a.email.sending)
 	}
 	a, cmd = press(t, a, "y")
 	a = settle(t, a, cmd)
@@ -693,7 +693,31 @@ func TestEmailFromMembersScreen(t *testing.T) {
 	if len(lines) != 1 || !strings.Contains(lines[0], "ned@example.com\tApplication in progress\tok\tSent by the webmaster") {
 		t.Errorf("log = %v", lines)
 	}
-	if !strings.Contains(a.View().Content, "Recorded as sent") {
+	if !strings.Contains(a.View().Content, "recorded as sent") {
 		t.Error("no confirmation shown")
+	}
+	a, _ = press(t, a, "esc")
+	if a.screen != screenMembers {
+		t.Errorf("esc should go back to Members, got %v", a.screen)
+	}
+}
+
+func TestEmailFromOnboarding(t *testing.T) {
+	calls := 0
+	a := tall(t, New(onboardDeps(t, true, &calls)))
+	a, _ = a.openOnboard()
+	a = typeText(t, a, "alex@example.com")
+	a, cmd := press(t, a, "enter")
+	a = settle(t, a, cmd)
+	a, _ = press(t, a, "e")
+	if a.screen != screenEmail || a.email.person.Email != "alex@example.com" || len(a.email.choices) != len(welcome.Kinds) {
+		t.Fatalf("e from onboarding: screen %v, %+v", a.screen, a.email)
+	}
+	if !strings.Contains(a.View().Content, "Forum access help") {
+		t.Error("every email should be offered")
+	}
+	a, _ = press(t, a, "esc")
+	if a.screen != screenOnboard {
+		t.Errorf("esc should go back to onboarding, got %v", a.screen)
 	}
 }
