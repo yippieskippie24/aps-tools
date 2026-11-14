@@ -41,11 +41,19 @@ The webmaster liked the split view and the popups, and chose a mix of the two.
   automatically, so the details pane is up to date.
 - The screen behind a popup is dimmed so it's clear what has your attention.
 
-The **Onboard a new member** screen keeps its own flow (`g`, `w`, `e`). It's for typing an
-address you don't have in a list.
+The **Onboard a new member** screen first kept its own flow (`g`, `w`, `e`). **Update, same
+day:** it was moved onto the popups, but then the plan showed twice (in the popup and on the screen
+behind it). So the screen was **removed**. A newly vetted member is on the sheet, so they appear
+under Members → Needs setup and in Check a member, where Enter → **Onboard** does the job. The
+menu item **Onboard a new member** stays, as a shortcut to Members → Needs setup. Someone who isn't
+on the sheet is onboarded by typing their full email in Check a member and choosing **Override the
+sheet and onboard…**, with a reason.
+
+After "Make N changes now", every screen shows a popup of what each step did. It offers the email
+that fits them now (usually the welcome email, with the new invite link) and copying the plan as a
+checklist. The old Email screen was removed too.
 
 ## Consequences
 - One place to add a new member action, and it appears everywhere.
 - Fewer keys to remember: arrows, Enter and Esc. Numbers 1–9 pick a popup item directly.
-- The older Email screen is now used only from Onboard. It could be removed once Onboard uses the
-  popups too.
+- No screen has its own letter keys for acting on a member any more.

@@ -39,7 +39,7 @@ next time it's used.
 ## Sending one
 
 - **In the app:** highlight a member on **Members** or **Check a member**, press **Enter**, and
-  choose **Email them…**. (On **Onboard a new member**, press **e**.) A popup lists every email,
+  choose **Email them…** (it's also in an onboarding plan's popup). A popup lists every email,
   with the one that best fits them first and marked **suggested**:
   - not vetted yet → Application in progress;
   - not on the list or forum → Welcome email;
@@ -49,7 +49,8 @@ next time it's used.
 
   Pick one and press **Enter**. Once it has opened in your browser, a popup asks whether you sent
   it: **Yes, I sent it** records it in the activity log. **Esc** takes you back a step.
-- **In the app, while onboarding:** **w** is a shortcut for the welcome email.
+- **In the app, after onboarding:** the popup that shows what was done offers the email that
+  fits them now, usually **Send the welcome email**.
 - **To several members:** on **Follow-ups**, choose a follow-up and tick who to include, then:
   - **Email … together** sends **one** email with everyone in **Bcc**, so members don't see each
     other's addresses, and greets them "Hello everyone,". It's only offered for an email with

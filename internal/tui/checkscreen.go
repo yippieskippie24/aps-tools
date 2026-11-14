@@ -299,8 +299,14 @@ func (a App) checkSelection() (memberView, bool) {
 	if err != nil {
 		return memberView{}, false
 	}
+	// Not in the list: if the list loaded, they aren't on the sheet (so the
+	// popup offers to override it, with a reason); if it didn't, the sheet
+	// is checked when they're planned.
 	mv := memberView{person: connectors.Person{Email: email},
 		sheet: connectors.MemberStatus{State: connectors.StateMissing, Summary: "Not on the membership list."}}
+	if len(a.people.entries) == 0 {
+		mv.sheet = connectors.MemberStatus{State: connectors.StateUnknown, Summary: "Not checked yet."}
+	}
 	if rep, ok := a.checked[email]; ok {
 		if sheet, ok := sheetResult(rep); ok {
 			mv.sheet = sheet

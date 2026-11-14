@@ -94,8 +94,7 @@ func (a App) onProgress(msg progressMsg) (App, tea.Cmd) {
 // finishesTask reports whether msg is the result that ends a task.
 func finishesTask(msg tea.Msg) bool {
 	switch msg.(type) {
-	case doctorDoneMsg, peopleDoneMsg, checkDoneMsg, rosterDoneMsg, memberRefreshedMsg,
-		planDoneMsg, stepDoneMsg, welcomeOpenedMsg, welcomeSentMsg, emailOpenedMsg, emailSentMsg,
+	case doctorDoneMsg, peopleDoneMsg, checkDoneMsg, rosterDoneMsg, memberRefreshedMsg, emailOpenedMsg,
 		popPlanMsg, popRunMsg, popEmailSentMsg, popResendMsg, popCheckedMsg, followupDoneMsg, groupOpenedMsg, groupSentMsg:
 		return true
 	}

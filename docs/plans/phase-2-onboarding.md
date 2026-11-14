@@ -12,7 +12,7 @@ can be stopped and safely re-run at any point.
 
 ## 1. What onboarding a member will look like
 
-From the app (**4 Onboard a new member**) or the command line (`aps-tools onboard alex@example.com`):
+From the app (Enter on a member → **Onboard**) or the command line (`aps-tools onboard alex@example.com`):
 
 1. **Gate: the membership sheet.** The tool finds them on the sheet.
    - If **App vetted** isn't **Y**, it stops: "Not vetted yet, so wait for the membership chair."
@@ -92,7 +92,7 @@ Each item is usable on its own, safest first:
 
    No outside system is changed yet; it runs the plan and stops. ✅ **Built.**
 2. **Welcome email copy page.** It changes nothing anywhere, and only needs the text. ✅ **Built:**
-   `aps-tools setup email`, `aps-tools email welcome <email>`, and **w** in the onboarding screen. The
+   `aps-tools setup email`, `aps-tools email welcome <email>`, and the app's popups (offered as soon as onboarding is done). The
    Getting Started link is asked for by `setup email` rather than `setup discourse`, so setting
    it doesn't mean re-approving the forum key. See [member-emails.md](../member-emails.md).
 3. **Mailing list (Cloudflare):** destination address, then `LIST_NEWS`. The **destination

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -10,7 +11,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/yippieskippie24/aps-tools/internal/activity"
 	"github.com/yippieskippie24/aps-tools/internal/check"
+	"github.com/yippieskippie24/aps-tools/internal/clipboard"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/onboard"
 	"github.com/yippieskippie24/aps-tools/internal/progress"
@@ -210,11 +213,17 @@ type popPlanMsg struct {
 	err  error
 }
 
-// popRunMsg carries the plan after its changes were made.
+// popRunMsg carries the plan after its changes were made, and a fresh
+// check of the member in every system.
 type popRunMsg struct {
-	plan onboard.Plan
-	err  error
+	plan     onboard.Plan
+	err      error // the activity log couldn't be written
+	report   check.Report
+	checkErr error // the fresh check failed
 }
+
+// planCopiedMsg reports whether copying a plan as a checklist worked.
+type planCopiedMsg struct{ err error }
 
 // planFor checks the member everywhere and plans their onboarding (with
 // an override reason, if given), then shows the plan in a popup. Planning
@@ -282,6 +291,7 @@ func (a App) planPopup(p onboard.Plan) *popup {
 	mv := memberView{person: p.Person, sheet: p.Gate}
 	pop.items = append(pop.items,
 		popItem{label: "Email them…", run: func(a App) (App, tea.Cmd) { return a.openPopup(a.emailsPopup(mv)) }},
+		popItem{label: "Copy the plan as a checklist", run: func(a App) (App, tea.Cmd) { return a, copyPlan(p) }},
 		popItem{label: "Close", run: func(a App) (App, tea.Cmd) { return a, nil }},
 	)
 	pop.footerHint = "+ the tool does it · □ by hand · ✓ done · … waiting on them    enter choose · esc back"
@@ -301,8 +311,88 @@ func (a App) runPlan(p onboard.Plan) (App, tea.Cmd) {
 			return popRunMsg{plan: p, err: logErr} // never change what can't be recorded
 		}
 		err := p.Run(ctx, log, nil)
-		return popRunMsg{plan: p, err: err}
+		// Check them again so the result (and the suggested email) is
+		// based on where they stand now.
+		_, conns, cerr := a.connect(ctx)
+		if cerr != nil {
+			return popRunMsg{plan: p, err: err, checkErr: cerr}
+		}
+		progress.Report(ctx, "Checking them again in every system")
+		rep, cerr := check.Run(ctx, conns, p.Person.Email, nil)
+		return popRunMsg{plan: p, err: err, report: rep, checkErr: cerr}
 	})
+}
+
+// copyPlan copies a plan as a plain-text checklist, e.g. for a note.
+func copyPlan(p onboard.Plan) tea.Cmd {
+	text := p.PlainText()
+	return func() tea.Msg { return planCopiedMsg{err: clipboard.Copy(text)} }
+}
+
+// donePopup shows what onboarding did for each system and offers the
+// email that fits them now (usually the welcome email).
+func (a App) donePopup(msg popRunMsg) *popup {
+	s := a.styles
+	p := msg.plan
+	made, failed := 0, 0
+	for _, st := range p.Steps {
+		switch st.Outcome {
+		case onboard.Succeeded:
+			made++
+		case onboard.Failed:
+			failed++
+		}
+	}
+	pop := &popup{title: "Onboarded " + p.Who(), sub: changeCount(made) + " made. Everything is in the activity log."}
+	if failed > 0 {
+		pop.title = "Onboarding " + p.Who() + ": " + fmt.Sprintf("%d didn't work", failed)
+		pop.sub = changeCount(made) + " made. Running it again later only tries what's still missing."
+	}
+	for _, st := range p.Steps {
+		var line string
+		switch {
+		case st.Outcome == onboard.Succeeded:
+			line = lipgloss.NewStyle().Foreground(s.p.ok).Render("✓ ") + s.text.Bold(true).Render(st.System) + s.subtle.Render(": "+st.Result)
+		case st.Outcome == onboard.Failed:
+			line = lipgloss.NewStyle().Foreground(s.p.fail).Render("✗ ") + s.text.Bold(true).Render(st.System) + s.subtle.Render(": "+st.Result)
+		case st.System == onboard.WelcomeStep:
+			continue // offered as the first choice below
+		case st.Kind == onboard.Manual || st.Kind == onboard.Blocked || st.Kind == onboard.Waiting:
+			line = a.kindColor(st.Kind).Render(st.Kind.Icon()+" ") + s.text.Bold(true).Render(st.System) + s.subtle.Render(": "+st.Action)
+		default:
+			continue // already done before, or later
+		}
+		pop.lines = append(pop.lines, line)
+	}
+	if msg.err != nil {
+		pop.lines = append(pop.lines, lipgloss.NewStyle().Foreground(s.p.fail).Render("✗ Activity log problem: "+msg.err.Error()))
+	}
+	if msg.checkErr != nil {
+		pop.lines = append(pop.lines, lipgloss.NewStyle().Foreground(s.p.warn).Render("! Couldn't check them again: "+msg.checkErr.Error()))
+	}
+	// Where they stand now: the fresh check, or failing that what the plan
+	// found before its changes.
+	mv := memberView{person: p.Person, sheet: connectors.MemberStatus{State: connectors.StateOK}, systems: []check.SystemResult{}}
+	for id, st := range p.States {
+		mv.systems = append(mv.systems, check.SystemResult{ID: id, MemberStatus: connectors.MemberStatus{State: st}})
+	}
+	if c, ok := a.checked[p.Person.Email]; ok && msg.checkErr == nil {
+		mv = memberView{person: p.Person, sheet: connectors.MemberStatus{State: connectors.StateOK}, systems: otherResults(c)}
+		if sh, ok := sheetResult(c); ok {
+			mv.sheet = sh
+		}
+	}
+	k := welcome.Suggest(mv.sheet.State, mv.states())
+	if p.Override != "" {
+		k = welcome.Suggest(connectors.StateOK, mv.states()) // the sheet was overridden
+	}
+	pop.items = []popItem{
+		{label: "Send the " + strings.ToLower(k.Name), suggested: true, run: func(a App) (App, tea.Cmd) { return a.chooseEmail(mv, k) }},
+		{label: "Other emails…", run: func(a App) (App, tea.Cmd) { return a.openPopup(a.emailsPopup(mv)) }},
+		{label: "Copy what was done as a checklist", run: func(a App) (App, tea.Cmd) { return a, copyPlan(p) }},
+		{label: "Close", run: func(a App) (App, tea.Cmd) { return a, nil }},
+	}
+	return pop
 }
 
 // ---- Emails from the popup ----
@@ -327,13 +417,19 @@ func (a App) emailsPopup(mv memberView) *popup {
 	for i, k := range kinds {
 		k := k
 		pop.items = append(pop.items, popItem{label: k.Name, suggested: i == 0, run: func(a App) (App, tea.Cmd) {
-			if k.ID == welcome.VerifyEmail.ID && mv.states()["cloudflare"] == connectors.StatePending {
-				return a.openPopup(a.verifyResendPopup(mv))
-			}
-			return a.openEmailFor(mv, k, false)
+			return a.chooseEmail(mv, k)
 		}})
 	}
 	return pop
+}
+
+// chooseEmail opens email k for mv, first asking about re-sending
+// Cloudflare's verification email when that's what they're waiting on.
+func (a App) chooseEmail(mv memberView, k welcome.Kind) (App, tea.Cmd) {
+	if k.ID == welcome.VerifyEmail.ID && mv.states()["cloudflare"] == connectors.StatePending {
+		return a.openPopup(a.verifyResendPopup(mv))
+	}
+	return a.openEmailFor(mv, k, false)
 }
 
 // verifyResendPopup asks whether to re-send Cloudflare's email along with
@@ -358,9 +454,7 @@ func (a App) openEmailFor(mv memberView, k welcome.Kind, resend bool) (App, tea.
 	}
 	log, logErr := a.activityLog()
 	return a, tea.Batch(watch, func() tea.Msg {
-		m := a.emailWork(ctx, k, mv.person, resend, log, logErr)
-		m.viaPopup = true
-		return m
+		return a.emailWork(ctx, k, mv.person, resend, log, logErr)
 	})
 }
 
@@ -593,21 +687,22 @@ func (a App) memberMsg(msg tea.Msg) (App, tea.Cmd) {
 				failed++
 			}
 		}
-		switch {
-		case msg.err != nil:
-			a.flash = "Activity log problem: " + msg.err.Error()
-		case failed > 0:
-			var why []string
-			for _, s := range msg.plan.Steps {
-				if s.Outcome == onboard.Failed {
-					why = append(why, s.System+": "+s.Result)
-				}
-			}
-			a.flash = fmt.Sprintf("%s made, %d failed: %s", changeCount(made), failed, strings.Join(why, " · "))
-		default:
-			a.flash = fmt.Sprintf("✓ Onboarded %s: %s made. Next: Email them → Welcome email.", msg.plan.Who(), changeCount(made))
+		if failed > 0 || msg.err != nil {
+			a.flash = fmt.Sprintf("%s made, %d didn't work: see the popup.", changeCount(made), failed)
+		} else {
+			a.flash = fmt.Sprintf("✓ Onboarded %s: %s made.", msg.plan.Who(), changeCount(made))
 		}
-		return a.recheckAs(msg.plan.Person, true)
+		if msg.checkErr == nil {
+			a = a.applyCheck(msg.report)
+		}
+		a.pop = nil
+		return a.openPopup(a.donePopup(msg))
+	case planCopiedMsg:
+		if msg.err != nil {
+			a.flash = "Couldn't copy: " + msg.err.Error()
+		} else {
+			a.flash = "✓ Copied: paste it into a note."
+		}
 	case emailOpenedMsg:
 		if msg.err != nil && a.queue != nil {
 			a.queue.err = "Couldn't open it: " + msg.err.Error()
@@ -645,4 +740,36 @@ func (a App) memberMsg(msg tea.Msg) (App, tea.Cmd) {
 		}
 	}
 	return a, nil
+}
+
+// kindColor picks the colour for a step's kind.
+func (a App) kindColor(k onboard.Kind) lipgloss.Style {
+	p := a.styles.p
+	switch k {
+	case onboard.Done:
+		return lipgloss.NewStyle().Foreground(p.ok).Bold(true)
+	case onboard.Auto:
+		return lipgloss.NewStyle().Foreground(p.accent).Bold(true)
+	case onboard.Manual, onboard.Waiting, onboard.Blocked:
+		return lipgloss.NewStyle().Foreground(p.warn).Bold(true)
+	default:
+		return lipgloss.NewStyle().Foreground(p.subtle)
+	}
+}
+
+// changeCount is "1 change" or "3 changes".
+func changeCount(n int) string {
+	if n == 1 {
+		return "1 change"
+	}
+	return fmt.Sprintf("%d changes", n)
+}
+
+// activityLog is the activity log next to the settings file.
+func (a App) activityLog() (*activity.Log, error) {
+	path, err := a.deps.ConfigPath()
+	if err != nil {
+		return nil, err
+	}
+	return activity.Open(filepath.Join(filepath.Dir(path), activity.FileName)), nil
 }

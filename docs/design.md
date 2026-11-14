@@ -121,7 +121,7 @@ Detailed plan: [plans/phase-2-onboarding.md](plans/phase-2-onboarding.md). 🔨 
 onboarding framework is built (`aps-tools onboard`, the app screen, `--dry-run`, the activity
 log). Today it plans, gates on vetting, and lists the steps to do by hand. Each system's steps
 become automatic as they're built ([decision 0011](decisions/0011-onboarding-plan-then-run.md)).
-- "Onboard a new member" flow: preview every step → run → live status per step.
+- Onboarding flow (from any member in the app): preview every step → run → live status → what was done.
 - Every step is **idempotent**: it checks first, only acts if something is missing, and can be
   safely re-run to finish a half-done onboarding.
 - Welcome email template (written together) and the HTML copy page.

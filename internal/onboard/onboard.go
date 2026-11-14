@@ -1,6 +1,6 @@
 // Package onboard is guided onboarding: setting a newly vetted member up in
 // every APS system, one step at a time. It powers both `aps-tools onboard`
-// and the "Onboard a new member" screen, so they always agree.
+// and the app's Onboard choice (on any member), so they always agree.
 //
 // It works in two halves, so nothing changes by surprise:
 //
@@ -358,7 +358,7 @@ func prepare(ctx context.Context, conns []connectors.Connector, email, override 
 	// already set up everywhere is an existing member, not a new one, so
 	// they don't need a welcome email.
 	welcome := Step{System: WelcomeStep, Kind: Manual,
-		Action: "Open it ready to copy into Mail (w in the app, or: aps-tools email welcome " + email + "), then send it."}
+		Action: "Open it ready to copy into Mail (offered in the app once onboarding is done, or: aps-tools email welcome " + email + "), then send it."}
 	if allDone(steps) {
 		welcome = Step{System: WelcomeStep, Kind: Done,
 			Now: "Not needed: they're already set up everywhere. (If they never had one, you can still send it.)"}

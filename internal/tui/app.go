@@ -30,9 +30,7 @@ const (
 	screenDoctor
 	screenHelp
 	screenCheck
-	screenOnboard
 	screenMembers
-	screenEmail
 	screenLog
 	screenFollowups
 )
@@ -62,9 +60,6 @@ type App struct {
 	// Check a member screen (see checkscreen.go)
 	member memberCheck
 
-	// Onboard a new member screen (see onboardscreen.go)
-	onboard onboarding
-
 	// Members screen (see membersscreen.go)
 	members membersView
 
@@ -72,9 +67,6 @@ type App struct {
 	// how it's sorted (an index into checkSorts; kept while the app is open).
 	people     people
 	peopleSort int
-
-	// Email a member screen (see emailscreen.go)
-	email emailView
 
 	// Activity log screen (see logscreen.go)
 	log logView
@@ -109,7 +101,7 @@ type App struct {
 // New creates the app. deps is normally doctor.DefaultDeps().
 func New(deps doctor.Deps) App {
 	s := newStyles(true)
-	return App{deps: deps, styles: s, width: 80, height: 24, member: newMemberCheck(s), onboard: newOnboarding(s), log: newLogView(s)}
+	return App{deps: deps, styles: s, width: 80, height: 24, member: newMemberCheck(s), log: newLogView(s)}
 }
 
 // Run starts the app and blocks until the user quits.
@@ -160,17 +152,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	// A finished result ends its task before it's handled, so the handler
 	// can start a follow-up task (e.g. re-checking someone after
-	// onboarding them). The onboarding screen's step-by-step run is the
-	// exception: each step's result starts the next step in the same task.
-	_, isStep := msg.(stepDoneMsg)
-	if finishesTask(msg) && !isStep {
+	// onboarding them).
+	if finishesTask(msg) {
 		a.finish()
 	}
 	m, cmd := a.update(msg)
 	a = m.(App)
-	if isStep && a.onboard.phase != obRunning {
-		a.finish()
-	}
 	if a.screen != before {
 		a.scroll = 0 // every screen opens at the top
 	}
@@ -183,7 +170,6 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		a.styles = newStyles(msg.IsDark())
 		a.member.restyle(a.styles)
-		a.onboard.restyle(a.styles)
 		a.log.restyle(a.styles)
 		return a, nil
 
@@ -220,16 +206,7 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
-	case emailOpenedMsg:
-		if msg.viaPopup {
-			return a.memberMsg(msg)
-		}
-		return a.emailMsg(msg), nil
-
-	case emailSentMsg:
-		return a.emailMsg(msg), nil
-
-	case popPlanMsg, popRunMsg, popEmailSentMsg, popResendMsg, popCheckedMsg:
+	case emailOpenedMsg, popPlanMsg, popRunMsg, popEmailSentMsg, popResendMsg, popCheckedMsg, planCopiedMsg:
 		return a.memberMsg(msg)
 
 	case peopleDoneMsg:
@@ -237,16 +214,6 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case rosterDoneMsg, memberRefreshedMsg:
 		return a.membersMsg(msg), nil
-
-	case welcomeOpenedMsg, welcomeSentMsg:
-		return a.welcomeMsg(msg), nil
-
-	case planDoneMsg, stepDoneMsg, obCopiedMsg:
-		if _, ok := msg.(planDoneMsg); ok {
-			a.scroll = 0
-		}
-		a, cmd, _ := a.onboardMsg(msg)
-		return a, cmd
 
 	case followupDoneMsg:
 		return a.followupMsg(msg)
@@ -282,12 +249,8 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.updateHelp(msg)
 		case screenCheck:
 			return a.updateCheck(msg)
-		case screenOnboard:
-			return a.updateOnboard(msg)
 		case screenMembers:
 			return a.updateMembers(msg)
-		case screenEmail:
-			return a.updateEmail(msg)
 		case screenLog:
 			return a.updateLog(msg)
 		case screenFollowups:
@@ -335,8 +298,11 @@ func (a App) choose(item menuItem) (tea.Model, tea.Cmd) {
 		a.back = screenHome
 		return a.openCheck()
 	case actionOnboard:
+		// New members are on the sheet, so they're under Members → Needs
+		// setup, where Enter onboards them (see memberactions.go).
 		a.back = screenHome
-		return a.openOnboard()
+		a.members.tab, a.members.cursor, a.members.top = 0, 0, 0
+		return a.openMembers()
 	case actionLog:
 		return a.openLog(), nil
 	case actionDoctor:
@@ -414,12 +380,8 @@ func (a App) screenContent(w int) (body, keys string) {
 		return a.viewHelp(w), a.keyHelp("esc", "back")
 	case screenCheck:
 		return a.viewCheck(w), a.checkKeys()
-	case screenOnboard:
-		return a.viewOnboard(w), a.onboardKeys()
 	case screenMembers:
 		return a.viewMembers(w), a.membersKeys()
-	case screenEmail:
-		return a.viewEmail(w), a.emailKeys()
 	case screenLog:
 		return a.viewLog(w), a.logKeys()
 	case screenFollowups:
@@ -498,12 +460,6 @@ func (a App) keyHelp(pairs ...string) string {
 func (a App) paste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch {
-	case a.screen == screenOnboard && a.onboard.phase == obInput:
-		a.onboard.input, cmd = a.onboard.input.Update(msg)
-		a.onboard.err = ""
-	case a.screen == screenOnboard && a.onboard.phase == obReason:
-		a.onboard.reason, cmd = a.onboard.reason.Update(msg)
-		a.onboard.err = ""
 	case a.screen == screenCheck && a.member.report == nil && !a.member.running:
 		a.member.input, cmd = a.member.input.Update(msg)
 		a.member.cursor, a.member.top, a.member.err = 0, 0, ""

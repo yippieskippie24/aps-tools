@@ -49,20 +49,23 @@ member group, and new accounts don't need approval. The exact sign-up settings a
 [setup/discourse.md](setup/discourse.md).
 
 **5. Welcome email.** Sent from your own mail. The tool fills in your template for the member and
-gives you a page to copy it from: press **w** in the onboarding screen, or run
-`aps-tools email welcome <email>`. See [member-emails.md](member-emails.md).
+gives you a page to copy it from: in the app, it's offered as soon as onboarding is done
+(**Send the welcome email**), or run `aps-tools email welcome <email>`. See [member-emails.md](member-emails.md).
 
 ## Onboarding with the tool
 
-Run `aps-tools onboard alex@example.com`, or choose **4 Onboard a new member** in the app. It:
+Run `aps-tools onboard alex@example.com`, or in the app open **4 Onboard a new member** (Members →
+Needs setup) or **3 Check a member** (paste their email), press Enter on them and choose
+**Onboard**. It:
 1. stops unless the member is vetted on the membership sheet;
 2. checks every system and shows the plan: ✓ nothing to do, + the tool will do it, □ do it by
    hand, … waiting on the member, ? couldn't check;
-3. changes nothing until you say **Go** (`--dry-run` just shows the plan);
+3. changes nothing until you say **Go** (in the app, **Make N changes now** in the plan's
+   popup; `--dry-run` just shows the plan);
 4. records every change in the activity log (`aps-tools log`).
 
 **If the sheet isn't right yet** (not vetted, or not on it) but you know the member should be set
-up, add `--override "your reason"` (or press **o** in the app). The override and reason are
+up, add `--override "your reason"` (or choose **Override the sheet…** in the app). The override and reason are
 recorded in the activity log. Ask the membership chair to update the sheet too. Members whose
 Member Status isn't Active are flagged with a **!** warning, but not stopped.
 

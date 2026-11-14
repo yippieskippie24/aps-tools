@@ -17,6 +17,7 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/doctor"
+	"github.com/yippieskippie24/aps-tools/internal/roster"
 	"github.com/yippieskippie24/aps-tools/internal/secrets"
 	"github.com/yippieskippie24/aps-tools/internal/welcome"
 )
@@ -285,10 +286,16 @@ func (fakeList) ID() string                           { return "list" }
 func (fakeList) Name() string                         { return "Mailing list" }
 func (fakeList) Missing() []string                    { return nil }
 func (fakeList) TestConnection(context.Context) error { return nil }
-func (fakeList) CheckMember(context.Context, string) (connectors.MemberStatus, error) {
+func (f fakeList) CheckMember(context.Context, string) (connectors.MemberStatus, error) {
+	if *f.calls > 0 { // added by onboarding
+		return connectors.MemberStatus{State: connectors.StateOK, Summary: "On news@."}, nil
+	}
 	return connectors.MemberStatus{State: connectors.StateMissing, Summary: "Not on the list."}, nil
 }
-func (fakeList) PlanOnboard(context.Context, connectors.Person, connectors.MemberStatus) (string, error) {
+func (fakeList) PlanOnboard(_ context.Context, _ connectors.Person, st connectors.MemberStatus) (string, error) {
+	if st.State == connectors.StateOK {
+		return "", nil
+	}
 	return "Add them to news@", nil
 }
 func (f fakeList) Onboard(context.Context, connectors.Person) (string, error) {
@@ -329,46 +336,58 @@ func settle(t *testing.T, a App, cmd tea.Cmd) App {
 	return a
 }
 
+// planVia plans email's onboarding the way the webmaster does for a new
+// member: Check a member, type (or paste) their email, Enter for their
+// actions, Enter again for the suggested "Onboard". (The sheet can't list
+// members in these tests, so the email isn't in the list.)
+func planVia(t *testing.T, a App, email string) App {
+	t.Helper()
+	a, cmd := press(t, a, "3")
+	a = settle(t, a, cmd)
+	a = typeText(t, a, email)
+	a, _ = press(t, a, "enter")
+	if a.pop == nil || !strings.HasPrefix(a.pop.items[0].label, "Onboard") {
+		t.Fatalf("their actions should start with Onboard: %+v", a.pop)
+	}
+	a, cmd = press(t, a, "enter")
+	return settle(t, a, cmd)
+}
+
+func TestOnboardMenuOpensNeedsSetup(t *testing.T) {
+	a := tall(t, New(testDeps()))
+	a, _ = press(t, a, "4")
+	if a.screen != screenMembers || memberTabs[a.members.tab] != roster.NeedsSetup {
+		t.Errorf("4 should open Members on Needs setup (screen %v, tab %d)", a.screen, a.members.tab)
+	}
+}
+
 func TestOnboardScreen(t *testing.T) {
 	calls := 0
 	deps := onboardDeps(t, true, &calls)
 	a := tall(t, New(deps))
-	a, _ = press(t, a, "4")
-	if a.screen != screenOnboard {
-		t.Fatal("3 should open Onboard a new member")
-	}
-	a = typeText(t, a, "alex@example.com")
-	a, cmd := press(t, a, "enter")
-	a = settle(t, a, cmd)
-	if a.onboard.phase != obPlan {
-		t.Fatalf("phase = %v, want the plan", a.onboard.phase)
+	a = planVia(t, a, "alex@example.com")
+	if a.pop == nil || !strings.HasPrefix(a.pop.title, "Onboard") {
+		t.Fatalf("the plan should open in a popup: %+v", a.pop)
 	}
 	view := a.View().Content
-	for _, want := range []string{"Alex Example <alex@example.com>", "Row 42", "Add them to news@", "Add them by hand.", "copy checklist"} {
+	for _, want := range []string{"Make 1 change now", "Alex Example <alex@example.com>", "Row 42", "Add them to news@", "Add them by hand."} {
 		if !strings.Contains(view, want) {
-			t.Errorf("plan screen is missing %q", want)
+			t.Errorf("plan is missing %q", want)
 		}
 	}
-
-	// g asks first; n cancels without changing anything.
-	a, _ = press(t, a, "g")
-	if a.onboard.phase != obConfirm || !strings.Contains(a.View().Content, "Make 1 change for Alex Example") {
-		t.Fatalf("g should ask before changing anything (phase %v)", a.onboard.phase)
-	}
-	a, _ = press(t, a, "n")
-	if a.onboard.phase != obPlan || calls != 0 {
-		t.Fatalf("cancel: phase %v, %d changes made", a.onboard.phase, calls)
+	if calls != 0 {
+		t.Fatal("planning must not change anything")
 	}
 
-	// g then y runs the step.
-	a, _ = press(t, a, "g")
-	a, cmd = press(t, a, "y")
+	// "Make 1 change now" does it, then a popup shows what happened and
+	// offers their email.
+	a, cmd := press(t, a, "enter")
 	a = settle(t, a, cmd)
-	if a.onboard.phase != obDone || calls != 1 {
-		t.Fatalf("after go: phase %v, %d changes made", a.onboard.phase, calls)
+	if calls != 1 || a.pop == nil || !strings.Contains(a.pop.title, "Onboarded Alex Example") {
+		t.Fatalf("after making the change: %d changes, popup %+v", calls, a.pop)
 	}
-	if view := a.View().Content; !strings.Contains(view, "Added to news@") || !strings.Contains(view, "activity log") {
-		t.Errorf("done screen doesn't show the result:\n%s", view)
+	if view := a.View().Content; !strings.Contains(view, "Added to news@") || !strings.Contains(view, "Send the") {
+		t.Errorf("the result popup:\n%s", view)
 	}
 	path, _ := deps.ConfigPath()
 	lines, _ := activity.Open(filepath.Join(filepath.Dir(path), activity.FileName)).Recent(10)
@@ -376,27 +395,31 @@ func TestOnboardScreen(t *testing.T) {
 		t.Errorf("activity log = %v", lines)
 	}
 
-	// Going again does nothing more.
-	a, _ = press(t, a, "g")
-	if a.onboard.phase != obDone || calls != 1 {
-		t.Errorf("g after finishing: phase %v, %d changes", a.onboard.phase, calls)
+	// Planning again finds nothing more for the tool to do.
+	a, _ = press(t, a, "esc")
+	a, _ = press(t, a, "enter") // their actions
+	a, cmd = press(t, a, "enter")
+	a = settle(t, a, cmd)
+	if strings.Contains(a.View().Content, "Make 1 change now") || calls != 1 {
+		t.Errorf("a second plan should have nothing to change (%d changes)", calls)
 	}
 }
 
 func TestOnboardScreenStopsWhenNotVetted(t *testing.T) {
 	calls := 0
 	a := tall(t, New(onboardDeps(t, false, &calls)))
-	a, _ = a.openOnboard()
-	a = typeText(t, a, "alex@example.com")
-	a, cmd := press(t, a, "enter")
-	a = settle(t, a, cmd)
+	a = planVia(t, a, "alex@example.com")
 	view := a.View().Content
 	if !strings.Contains(view, "Not ready to onboard") || !strings.Contains(view, "Wait for the chair.") {
-		t.Errorf("not-vetted screen:\n%s", view)
+		t.Errorf("not-vetted plan:\n%s", view)
 	}
-	a, _ = press(t, a, "g")
-	if a.onboard.phase != obPlan || calls != 0 {
-		t.Errorf("an unvetted member must never be set up (phase %v, %d changes)", a.onboard.phase, calls)
+	for _, it := range a.pop.items {
+		if strings.HasPrefix(it.label, "Make") {
+			t.Error("an unvetted member must never be set up")
+		}
+	}
+	if calls != 0 {
+		t.Errorf("%d changes made", calls)
 	}
 }
 
@@ -404,31 +427,27 @@ func TestOnboardScreenOverride(t *testing.T) {
 	calls := 0
 	deps := onboardDeps(t, false, &calls)
 	a := tall(t, New(deps))
-	a, _ = a.openOnboard()
-	a = typeText(t, a, "alex@example.com")
-	a, cmd := press(t, a, "enter")
-	a = settle(t, a, cmd)
-	if !strings.Contains(a.View().Content, "override") {
-		t.Fatal("a not-vetted member should offer an override")
+	a = planVia(t, a, "alex@example.com")
+	if a.pop == nil || a.pop.items[0].label != "Override the sheet…" {
+		t.Fatalf("a not-vetted member should offer an override: %+v", a.pop)
 	}
-
-	a, _ = press(t, a, "o")
-	if a.onboard.phase != obReason {
-		t.Fatalf("o should ask for a reason (phase %v)", a.onboard.phase)
+	a, _ = press(t, a, "enter")
+	if a.pop == nil || a.pop.input == nil {
+		t.Fatal("override should ask for a reason")
 	}
 	a = typeText(t, a, "ok")
-	a, cmd = press(t, a, "enter")
-	if cmd != nil || a.onboard.err == "" {
+	a, cmd := press(t, a, "enter")
+	if cmd != nil || a.pop.inputErr == "" {
 		t.Fatal("a too-short reason must be refused")
 	}
 	a = typeText(t, a, " - paid at the meeting")
 	a, cmd = press(t, a, "enter")
 	a = settle(t, a, cmd)
-	if !a.onboard.plan.Ready || a.onboard.plan.Override != "ok - paid at the meeting" {
-		t.Fatalf("override plan = %+v", a.onboard.plan)
+	if a.pop == nil || !strings.Contains(a.View().Content, "Make 1 change now") {
+		t.Fatalf("the overridden plan should be ready:\n%s", a.View().Content)
 	}
 	view := a.View().Content
-	for _, want := range []string{"Sheet overridden", "Override reason: ok - paid at the meeting", "Override recorded"} {
+	for _, want := range []string{"Sheet overridden", "Override reason: ok - paid at the meeting"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("override screen is missing %q", want)
 		}
@@ -551,63 +570,50 @@ func TestMembersScreen(t *testing.T) {
 	if calls != 1 || !strings.Contains(a.View().Content, "1 change made") {
 		t.Errorf("onboarding: %d changes, view:\n%s", calls, a.View().Content)
 	}
+	a, _ = press(t, a, "esc") // closes the result popup
 	a, _ = press(t, a, "esc")
 	if a.screen != screenHome {
 		t.Errorf("esc should go home, got %v", a.screen)
 	}
 }
 
+// After onboarding, the result popup offers the welcome email, filled in
+// with the forum invite onboarding just created; "Did you send it?" is
+// recorded.
 func TestOnboardWelcomeEmail(t *testing.T) {
 	var opened []string
 	saved := showEmail
 	t.Cleanup(func() { showEmail = saved })
-	showEmail = func(_ welcome.Kind, _ *config.Config, p connectors.Person, who string, _ connectors.ForumLink) (welcome.Email, error) {
-		opened = append(opened, who)
-		return welcome.Email{Missing: []string{"FORUM_INVITE_LINK"}}, nil
+	showEmail = func(k welcome.Kind, _ *config.Config, _ connectors.Person, who string, link connectors.ForumLink) (welcome.Email, error) {
+		opened = append(opened, k.ID+" "+who+" "+link.URL)
+		return welcome.Email{Missing: []string{"GETTING_STARTED_LINK"}}, nil
 	}
-
-	calls := 0
-	deps := onboardDeps(t, true, &calls)
+	created := false
+	deps := onboardDeps(t, true, new(int))
+	deps.Connectors = func(*config.Config, secrets.Store) []connectors.Connector {
+		return []connectors.Connector{fakeSheet{connectors.MemberStatus{State: connectors.StateOK, Summary: "Vetted."}}, fakeForum{&created}}
+	}
 	a := tall(t, New(deps))
-	a, _ = a.openOnboard()
-	a = typeText(t, a, "alex@example.com")
-	a, cmd := press(t, a, "enter")
+	a = planVia(t, a, "alex@example.com")
+	a, cmd := press(t, a, "enter") // Make 1 change now
 	a = settle(t, a, cmd)
-	if !strings.Contains(a.View().Content, "welcome email") {
-		t.Fatal("the plan should offer w for the welcome email")
+	if !created || a.pop == nil || a.pop.items[0].label != "Send the welcome email" {
+		t.Fatalf("created %v, popup %+v", created, a.pop)
 	}
-
-	a, cmd = press(t, a, "w")
+	a, cmd = press(t, a, "enter")
 	a = settle(t, a, cmd)
-	if len(opened) != 1 || opened[0] != "Alex Example <alex@example.com>" || a.onboard.phase != obWelcome {
-		t.Fatalf("opened %v, phase %v", opened, a.onboard.phase)
+	if len(opened) != 1 || opened[0] != "welcome Alex Example <alex@example.com> https://forum.example.org/invites/abc" {
+		t.Fatalf("opened %v", opened)
 	}
-	if view := a.View().Content; !strings.Contains(view, "Did you send it?") || !strings.Contains(view, "{{FORUM_INVITE_LINK}}") {
-		t.Errorf("welcome prompt:\n%s", view)
+	if view := a.View().Content; !strings.Contains(view, "Did you send it?") || !strings.Contains(view, "{{GETTING_STARTED_LINK}}") {
+		t.Errorf("sent prompt:\n%s", view)
 	}
-
-	// "not yet" records nothing.
-	a, _ = press(t, a, "n")
+	a, cmd = press(t, a, "enter") // Yes, I sent it
+	a = settle(t, a, cmd)
 	path, _ := deps.ConfigPath()
-	log := activity.Open(filepath.Join(filepath.Dir(path), activity.FileName))
-	if lines, _ := log.Recent(5); len(lines) != 0 {
-		t.Errorf("not yet: log = %v", lines)
-	}
-
-	// Open it again and say yes.
-	a, cmd = press(t, a, "w")
-	a = settle(t, a, cmd)
-	a, cmd = press(t, a, "y")
-	a = settle(t, a, cmd)
-	lines, _ := log.Recent(5)
-	if len(lines) != 1 || !strings.Contains(lines[0], "Welcome email\tok\tSent by the webmaster") {
+	lines, _ := activity.Open(filepath.Join(filepath.Dir(path), activity.FileName)).Recent(10)
+	if len(lines) == 0 || !strings.Contains(lines[len(lines)-1], "Welcome email\tok\tSent by the webmaster") {
 		t.Errorf("log = %v", lines)
-	}
-	if a.welcomeAvailable() {
-		t.Error("after it's sent, w shouldn't offer it again")
-	}
-	if calls != 0 {
-		t.Error("the welcome email must not change any system")
 	}
 }
 
@@ -638,12 +644,14 @@ func (f fakeForum) InviteLink(context.Context, string) (connectors.ForumLink, er
 	return connectors.ForumLink{}, nil
 }
 
-func TestWelcomeEmailGetsTheInviteLink(t *testing.T) {
-	var links []string
+// Before onboarding there's no forum invite, so the welcome email can't be
+// opened yet: it says to onboard them first.
+func TestWelcomeEmailNeedsTheInvite(t *testing.T) {
+	opened := 0
 	saved := showEmail
 	t.Cleanup(func() { showEmail = saved })
-	showEmail = func(_ welcome.Kind, _ *config.Config, _ connectors.Person, _ string, link connectors.ForumLink) (welcome.Email, error) {
-		links = append(links, link.URL)
+	showEmail = func(welcome.Kind, *config.Config, connectors.Person, string, connectors.ForumLink) (welcome.Email, error) {
+		opened++
 		return welcome.Email{}, nil
 	}
 	created := false
@@ -652,29 +660,10 @@ func TestWelcomeEmailGetsTheInviteLink(t *testing.T) {
 		return []connectors.Connector{fakeSheet{connectors.MemberStatus{State: connectors.StateOK, Summary: "Vetted."}}, fakeForum{&created}}
 	}
 	a := tall(t, New(deps))
-	a, _ = a.openOnboard()
-	a = typeText(t, a, "alex@example.com")
-	a, cmd := press(t, a, "enter")
+	a, cmd := a.openEmailFor(memberView{person: connectors.Person{Email: "alex@example.com"}}, welcome.Welcome, false)
 	a = settle(t, a, cmd)
-
-	// Before Go there's no invite: w explains instead of opening.
-	a, cmd = press(t, a, "w")
-	a = settle(t, a, cmd)
-	if len(links) != 0 || !strings.Contains(a.onboard.notice, "Press g first") {
-		t.Fatalf("w before go: opened %v, notice %q", links, a.onboard.notice)
-	}
-
-	// Go creates the invite; then w fills in its link.
-	a, _ = press(t, a, "g")
-	a, cmd = press(t, a, "y")
-	a = settle(t, a, cmd)
-	if !created || a.onboard.phase != obDone {
-		t.Fatalf("go: created %v, phase %v", created, a.onboard.phase)
-	}
-	a, cmd = press(t, a, "w")
-	a = settle(t, a, cmd)
-	if len(links) != 1 || links[0] != "https://forum.example.org/invites/abc" {
-		t.Errorf("welcome email links = %v", links)
+	if opened != 0 || !strings.Contains(a.View().Content, "Onboard them first") {
+		t.Errorf("opened %d:\n%s", opened, a.View().Content)
 	}
 }
 
@@ -730,20 +719,15 @@ func TestEmailFromMembersScreen(t *testing.T) {
 func TestEmailFromOnboarding(t *testing.T) {
 	calls := 0
 	a := tall(t, New(onboardDeps(t, true, &calls)))
-	a, _ = a.openOnboard()
-	a = typeText(t, a, "alex@example.com")
-	a, cmd := press(t, a, "enter")
-	a = settle(t, a, cmd)
-	a, _ = press(t, a, "e")
-	if a.screen != screenEmail || a.email.person.Email != "alex@example.com" || len(a.email.choices) != len(welcome.Kinds) {
-		t.Fatalf("e from onboarding: screen %v, %+v", a.screen, a.email)
-	}
-	if !strings.Contains(a.View().Content, "Forum access help") {
-		t.Error("every email should be offered")
+	a = planVia(t, a, "alex@example.com")
+	plan := a.pop
+	a, _ = press(t, a, "2") // Email them…
+	if a.pop == nil || len(a.pop.items) != len(welcome.Kinds) || !strings.Contains(a.View().Content, "Forum access help") {
+		t.Fatalf("every email should be offered: %+v", a.pop)
 	}
 	a, _ = press(t, a, "esc")
-	if a.screen != screenOnboard {
-		t.Errorf("esc should go back to onboarding, got %v", a.screen)
+	if a.pop != plan {
+		t.Error("esc should go back to the plan")
 	}
 }
 
@@ -768,37 +752,45 @@ func TestVerifyEmailOffersToResend(t *testing.T) {
 	showEmail = func(welcome.Kind, *config.Config, connectors.Person, string, connectors.ForumLink) (welcome.Email, error) {
 		return welcome.Email{}, nil
 	}
-	for _, answer := range []string{"n", "y"} {
+	for _, answer := range []string{"2", "1"} { // no, then yes
 		resent := 0
 		deps := onboardDeps(t, true, new(int))
 		deps.Connectors = func(*config.Config, secrets.Store) []connectors.Connector {
 			return []connectors.Connector{fakeMail{&resent}}
 		}
 		a := tall(t, New(deps))
-		a = a.openEmail(connectors.Person{Email: "pat@example.com", FirstName: "Pat"}, connectors.StateOK,
-			map[string]connectors.State{"cloudflare": connectors.StatePending, "discourse": connectors.StateOK})
-		if a.email.choices[0].ID != welcome.VerifyEmail.ID {
-			t.Fatalf("suggested %s", a.email.choices[0].ID)
+		pat := memberView{person: connectors.Person{Email: "pat@example.com", FirstName: "Pat"},
+			sheet: connectors.MemberStatus{State: connectors.StateOK},
+			systems: []check.SystemResult{
+				{ID: "cloudflare", MemberStatus: connectors.MemberStatus{State: connectors.StatePending}},
+				{ID: "discourse", MemberStatus: connectors.MemberStatus{State: connectors.StateOK}},
+			}}
+		a, _ = a.openPopup(a.emailsPopup(pat))
+		if a.pop.items[0].label != welcome.VerifyEmail.Name {
+			t.Fatalf("suggested %s", a.pop.items[0].label)
 		}
 		a, _ = press(t, a, "enter")
-		if !a.email.askResend || !strings.Contains(a.View().Content, "new verification email?") {
+		if !strings.Contains(a.View().Content, "new verification email?") {
 			t.Fatalf("verify email for an unverified address should ask about re-sending first")
 		}
 		a, cmd := press(t, a, answer)
 		a = settle(t, a, cmd)
 		path, _ := deps.ConfigPath()
 		lines, _ := activity.Open(filepath.Join(filepath.Dir(path), activity.FileName)).Recent(5)
+		if a.pop == nil || !strings.Contains(a.View().Content, "Did you send it?") {
+			t.Errorf("%s: the email should open either way", answer)
+		}
 		switch answer {
-		case "n":
-			if resent != 0 || len(lines) != 0 || a.email.sending == nil {
-				t.Errorf("n: resent %d, log %v, sending %v", resent, lines, a.email.sending)
+		case "2":
+			if resent != 0 || len(lines) != 0 {
+				t.Errorf("no: resent %d, log %v", resent, lines)
 			}
-		case "y":
+		case "1":
 			if resent != 1 || len(lines) != 1 || !strings.Contains(lines[0], "Mailing list (Cloudflare)\tok\tCloudflare is sending") {
-				t.Errorf("y: resent %d, log %v", resent, lines)
+				t.Errorf("yes: resent %d, log %v", resent, lines)
 			}
-			if !strings.Contains(a.email.notice, "✓ Cloudflare is sending") || a.email.sending == nil {
-				t.Errorf("y: notice %q", a.email.notice)
+			if !strings.Contains(a.View().Content, "Cloudflare is sending") {
+				t.Error("yes: the re-send isn't mentioned")
 			}
 		}
 	}
@@ -945,15 +937,8 @@ func TestCheckListSorting(t *testing.T) {
 
 func TestPasteGoesIntoTextBoxes(t *testing.T) {
 	a := tall(t, New(testDeps()))
-	a, _ = a.openOnboard()
-	m, _ := a.Update(tea.PasteMsg{Content: "robin@example.com"})
-	a = m.(App)
-	if a.onboard.input.Value() != "robin@example.com" {
-		t.Errorf("onboard email box: %q", a.onboard.input.Value())
-	}
-
 	a, _ = a.openCheck()
-	m, _ = a.Update(tea.PasteMsg{Content: "robin"})
+	m, _ := a.Update(tea.PasteMsg{Content: "robin"})
 	a = m.(App)
 	if a.member.input.Value() != "robin" {
 		t.Errorf("check search box: %q", a.member.input.Value())
@@ -982,7 +967,7 @@ func TestBusyScreensSayWhatTheyAreDoing(t *testing.T) {
 	}
 }
 
-func TestPressingWTwiceOpensOneEmail(t *testing.T) {
+func TestOneEmailOpensAtATime(t *testing.T) {
 	opened := 0
 	saved := showEmail
 	t.Cleanup(func() { showEmail = saved })
@@ -990,20 +975,15 @@ func TestPressingWTwiceOpensOneEmail(t *testing.T) {
 		opened++
 		return welcome.Email{}, nil
 	}
-	deps := onboardDeps(t, true, new(int))
-	a := tall(t, New(deps))
-	a, _ = a.openOnboard()
-	a = typeText(t, a, "alex@example.com")
-	a, cmd := press(t, a, "enter")
-	a = settle(t, a, cmd)
-
-	a, first := press(t, a, "w")
-	a, second := press(t, a, "w") // while the first is still running
+	a := tall(t, New(onboardDeps(t, true, new(int))))
+	mv := memberView{person: connectors.Person{Email: "alex@example.com"}}
+	a, first := a.openEmailFor(mv, welcome.ForumAccess, false)
+	a, second := a.openEmailFor(mv, welcome.ForumAccess, false) // while the first is still running
 	if second != nil {
-		t.Error("a second w started more work while the first was running")
+		t.Error("a second email started while the first was opening")
 	}
-	if !strings.Contains(a.View().Content, "Opening the welcome email") {
-		t.Error("no sign that the welcome email is being opened")
+	if !strings.Contains(a.View().Content, "Opening the forum access help") {
+		t.Error("no sign that the email is being opened")
 	}
 	a = settle(t, a, first)
 	if opened != 1 {

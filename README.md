@@ -69,7 +69,10 @@ your email), otherwise one by one. To look up just one person, use **3 Check a m
 straight away (only the sheet is read), sorted by name (←/→ sorts by last name or email). Type
 part of a name to narrow it, ↑/↓ to highlight someone, and Enter for the same popup. You can also
 type someone's full email address to act on a person who isn't on the sheet. **4 Onboard a new
-member** plans and does a member's setup step by step. **5 Activity log** shows every change the
+member** opens Members on **Needs setup**, where newly vetted members appear: Enter on one, then
+**Onboard**, shows their plan, and "Make N changes now" sets them up and offers their welcome
+email. (Or paste their email into Check a member.) For someone who isn't on the sheet yet, type
+their full email in Check a member and choose **Override the sheet and onboard…** with a reason. **5 Activity log** shows every change the
 tool has made.
 
 ## Documentation

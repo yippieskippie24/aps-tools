@@ -93,36 +93,28 @@ func TestWritePreviews(t *testing.T) {
 				{System: "Membership sheet record", Kind: onboard.Later, Now: "The tool will record onboarding on the sheet in a later version."},
 			},
 		}
-		ob := a
-		ob, _ = ob.openOnboard()
-		write("onboard-input", ob)
-		ob.onboard.input.Blur()
-		ob.onboard.plan, ob.onboard.phase = &plan, obPlan
-		write("onboard-plan", ob)
-		ob.onboard.phase = obConfirm
-		write("onboard-confirm", ob)
+		ob := membersPreview(a)
+		obPlanned, _ := ob.openPopup(ob.planPopup(plan))
+		write("onboard-plan", obPlanned)
 
 		ran := plan
+		ran.States = map[string]connectors.State{"cloudflare": connectors.StateMissing, "jira": connectors.StateOK, "discourse": connectors.StateMissing}
 		ran.Steps = slices.Clone(plan.Steps)
 		ran.Steps[1].Outcome, ran.Steps[1].Result = onboard.Succeeded, "Added a destination address and added them to news@"
-		done := ob
-		done.onboard.plan, done.onboard.phase = &ran, obDone
-		done.onboard.notice = "Recorded in the activity log: ~/.config/aps-tools/activity.log"
+		done, _ := ob.openPopup(ob.donePopup(popRunMsg{plan: ran}))
 		write("onboard-done", done)
 
 		notReady := ob
-		notReady.onboard.phase = obPlan
-		notReady.onboard.plan = &onboard.Plan{
+		nr := onboard.Plan{
 			Person: connectors.Person{Email: "sam@example.com", FirstName: "Sam", LastName: "Sample"},
 			Gate: connectors.MemberStatus{State: connectors.StatePending, Summary: "On the list as New: their application is still in progress.",
 				Fix: "Wait until the membership chair marks \"App vetted\" as Y before setting them up anywhere else."},
 		}
+		notReady, _ = notReady.openPopup(notReady.planPopup(nr))
 		write("onboard-not-ready", notReady)
 
-		why := notReady
-		why.onboard.phase = obReason
-		why.onboard.reason.SetValue("Paid at the meeting; the chair will update the sheet")
-		why.onboard.reason.Focus()
+		why, _ := notReady.openPopup(notReady.reasonPopup(memberView{person: nr.Person, sheet: nr.Gate}))
+		why.pop.input.SetValue("Paid at the meeting; the chair will update the sheet")
 		write("onboard-override", why)
 
 		write("members", membersPreview(a))
@@ -172,11 +164,10 @@ func TestWritePreviews(t *testing.T) {
 		flashed.flash = "✓ Onboarded Alex Example: 1 change made. Next: Email them → Welcome email."
 		write("members-flash", flashed)
 
-		em := a
-		em.screen = screenMembers
-		em = em.openEmail(connectors.Person{Email: "jordan.sample@example.com", FirstName: "Jordan", LastName: "Sample"},
-			connectors.StateOK, map[string]connectors.State{"cloudflare": connectors.StatePending, "discourse": connectors.StateOK})
-		em.email.pick = 1
+		em := membersPreview(a)
+		em, _ = em.openPopup(em.emailsPopup(memberView{person: connectors.Person{Email: "jordan.sample@example.com", FirstName: "Jordan", LastName: "Sample"},
+			sheet:   connectors.MemberStatus{State: connectors.StateOK},
+			systems: []check.SystemResult{{ID: "cloudflare", MemberStatus: connectors.MemberStatus{State: connectors.StatePending}}, {ID: "discourse", MemberStatus: connectors.MemberStatus{State: connectors.StateOK}}}}))
 		write("email", em)
 
 		people := a

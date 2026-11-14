@@ -80,7 +80,7 @@ func (k Kind) ForMember(cfg *config.Config, p connectors.Person, link connectors
 	e.Kind = k
 	switch {
 	case k.NeedsInvite && link.HasAccount:
-		e.Notes = append(e.Notes, "They already have a forum account, so no invite was made: the invitation link in this email is just the forum's address. If they're an existing member who can't get in, send "+ForumAccess.Name+" instead (f on the Members screen).")
+		e.Notes = append(e.Notes, "They already have a forum account, so no invite was made: the invitation link in this email is just the forum's address. If they're an existing member who can't get in, send "+ForumAccess.Name+" instead (Email them… in the app).")
 	case k.ID == ForumAccess.ID && !link.HasAccount:
 		e.Notes = append(e.Notes, "The forum says they don't have an account yet, so this email doesn't fit: onboard them and send the "+strings.ToLower(Welcome.Name)+" instead.")
 	}
