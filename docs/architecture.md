@@ -46,11 +46,13 @@ TUI and the plain commands always behave the same.
 | Folder | What lives here |
 |---|---|
 | `cmd/aps-tools/` | The program's entry point. Tiny — it just starts `internal/cli`. |
-| `internal/cli/` | One file per command (`check.go`, `doctor.go`, `config.go`, `version.go`, `cloudflare.go`, `discourse.go` and `sheet.go` for the `discover` commands, `onboard.go` for `onboard` and `log`). `setup.go` holds shared setup code (including asking for API keys); each system's guided setup is in `setup_<system>.go`. `root.go` opens the TUI when no command is given. |
-| `internal/tui/` | The interactive app. `app.go` is the main model and screen switching; `home.go` the menu; `membersscreen.go` "Members"; `checkscreen.go` "Check a member"; `onboardscreen.go` "Onboard a new member"; `scroll.go` makes every screen fill the window and scroll when it's taller; `screens.go` Test connections and Help; `styles.go` holds every colour. |
+| `internal/cli/` | One file per command (`check.go`, `doctor.go`, `config.go`, `version.go`, `cloudflare.go`, `discourse.go` and `sheet.go` for the `discover` commands, `onboard.go` for `onboard` and `log`, `email.go` for the welcome email). `setup.go` holds shared setup code (including asking for API keys); each system's guided setup is in `setup_<system>.go`. `root.go` opens the TUI when no command is given. |
+| `internal/tui/` | The interactive app. `app.go` is the main model and screen switching; `home.go` the menu; `membersscreen.go` "Members" (and `memberemail.go`, its e-for-email list); `checkscreen.go` "Check a member"; `onboardscreen.go` "Onboard a new member"; `scroll.go` makes every screen fill the window and scroll when it's taller; `screens.go` Test connections and Help; `styles.go` holds every colour. |
 | `internal/check/` | Checks one member against every connector at once and builds the report (also its plain-text copy). |
 | `internal/doctor/` | Checks the tool's own setup and every connector's connection. |
 | `internal/onboard/` | Guided onboarding: the vetting gate, the plan (what each system needs), and running the tool's own steps. See [decision 0011](decisions/0011-onboarding-plan-then-run.md). |
+| `internal/welcome/` | Member emails: one `Kind` per situation (welcome, forum access help, …), each with a starting template (the `*-email.md` files). Fills a template in for a member, suggests which email fits them, and builds the copy page (`page.html`). See [member-emails.md](member-emails.md). |
+| `internal/pageserver/` | A tiny web server on 127.0.0.1 that shows pages (like an email to copy) in the browser from memory, at random addresses. See [decision 0015](decisions/0015-member-emails-and-page-server.md). |
 | `internal/roster/` | Everyone on the sheet, checked in every system at once and sorted into groups, for the Members screen. See [decision 0013](decisions/0013-members-screen-bulk-checks.md). |
 | `internal/activity/` | The activity log: one line per change the tool makes, in `activity.log` next to the settings file. |
 | `internal/connectors/` | The `Connector` interface and member states (`connector.go`) and the registry (`registry.go`). Each system gets its own sub-folder, e.g. `jira/`, `cloudflare/`. `all/` switches every connector on, in display order. In `cloudflare/`, `lists.go` reads the mailing lists exactly as the list Worker does. Keep the two in step. In `discourse/`, `userkey.go` does the approve-in-browser hand-shake for the forum key. In `sheet/`, `google.go` signs in to Google as the service account and `columns.go` finds columns by header text. `vetting.go` decides who counts as vetted, including members who joined before App vetted was used. |
@@ -84,6 +86,8 @@ Two optional interfaces, in the same file, are for onboarding:
 |---|---|---|
 | `Directory` | The membership sheet | `LookupMember`: the check plus the member's name. Onboarding's gate: only a vetted member goes further. |
 | `Onboarder` | Each system, as its Phase 2 step is built | `PlanOnboard` says what it would do (changing nothing). `Onboard` does it, checking again first so it's safe to repeat. |
+
+`InviteLinker` (the forum) gives the welcome email the member's invite link.
 
 Two more optional interfaces are for the Members screen: `MemberLister` (the sheet lists everyone)
 and `BulkChecker` (`CheckMembers`: check many members in a few requests, by reading the system's

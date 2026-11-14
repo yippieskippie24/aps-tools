@@ -17,6 +17,7 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/secrets"
+	"github.com/yippieskippie24/aps-tools/internal/welcome"
 )
 
 // This file holds the parts of `aps-tools setup` shared by every system,
@@ -46,6 +47,14 @@ Run "aps-tools setup" on its own to see what's connected.`,
 			Args:  cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				return setupWebmaster(cmd.Context(), cmd.OutOrStdout())
+			},
+		},
+		&cobra.Command{
+			Use:   "email",
+			Short: "Set up the welcome email: Getting Started link and your template",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return setupEmail(cmd.Context(), cmd.OutOrStdout())
 			},
 		},
 		&cobra.Command{
@@ -127,6 +136,15 @@ func showSetupStatus(out io.Writer) error {
 	}
 	for _, name := range connectors.NotYetBuilt() {
 		lipgloss.Fprintln(out, dimStyle.Render("  · "+name+"  (coming soon)"))
+	}
+	lipgloss.Fprintln(out)
+	lipgloss.Fprintln(out, boldStyle.Render("Welcome email"))
+	if path, err := welcome.Welcome.Path(); err == nil {
+		if _, err := os.Stat(path); err == nil && cfg.Discourse.GettingStartedURL != "" {
+			lipgloss.Fprintln(out, okStyle.Render("  ✓ ")+"Template and Getting Started link set"+dimStyle.Render("  — edit: aps-tools setup email"))
+		} else {
+			lipgloss.Fprintln(out, warnStyle.Render("  ! ")+"Not set up yet"+dimStyle.Render("  — run: aps-tools setup email"))
+		}
 	}
 	return nil
 }

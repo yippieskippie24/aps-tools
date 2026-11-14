@@ -16,7 +16,9 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/check"
 	"github.com/yippieskippie24/aps-tools/internal/clipboard"
 	"github.com/yippieskippie24/aps-tools/internal/config"
+	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/onboard"
+	"github.com/yippieskippie24/aps-tools/internal/welcome"
 )
 
 // This file is the "Onboard a new member" screen. It walks through the same
@@ -34,6 +36,7 @@ const (
 	obConfirm                 // "Make these changes?"
 	obRunning                 // running the tool's steps, one at a time
 	obDone                    // finished running
+	obWelcome                 // the welcome email is open: "Did you send it?"
 )
 
 // onboarding holds the state of the Onboard a new member screen.
@@ -45,6 +48,7 @@ type onboarding struct {
 	plan    *onboard.Plan // nil until a plan has been made
 	current int           // index of the step running now (obRunning)
 	notice  string        // short message, e.g. "Copied" or a log problem
+	before  obPhase       // the phase to go back to after obWelcome
 }
 
 func newOnboarding(s styles) onboarding {
@@ -258,6 +262,14 @@ func (a App) updateOnboard(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case obRunning:
 		return a, nil // changes are being made: stay until they finish
 
+	case obWelcome:
+		ob.phase = ob.before
+		if key == "y" {
+			return a, a.recordWelcomeSent()
+		}
+		ob.notice = "Not recorded as sent. Press w to open it again."
+		return a, nil
+
 	case obReason:
 		switch key {
 		case "esc":
@@ -318,6 +330,10 @@ func (a App) updateOnboard(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			ob.reason.SetValue("")
 			return a, ob.reason.Focus()
 		}
+	case "w":
+		if a.welcomeAvailable() {
+			return a, a.openWelcome()
+		}
 	case "c":
 		text := ob.plan.PlainText()
 		return a, func() tea.Msg { return obCopiedMsg{err: clipboard.Copy(text)} }
@@ -341,11 +357,19 @@ func (a App) onboardKeys() string {
 		return a.keyHelp("y", "go", "n", "cancel")
 	case obReason:
 		return a.keyHelp("enter", "override and record it", "esc", "cancel")
+	case obWelcome:
+		return a.keyHelp("y", "yes, I sent it", "n", "not yet")
 	case obDone:
+		if a.welcomeAvailable() {
+			return a.keyHelp("w", "welcome email", "r", "check again", "c", "copy", "n", "next member", "esc", "back")
+		}
 		return a.keyHelp("r", "check again", "c", "copy", "n", "next member", "esc", "back")
 	}
 	if ob.plan != nil && ob.plan.Ready && ob.plan.Next() >= 0 {
-		return a.keyHelp("g", "go", "c", "copy checklist", "r", "re-check", "n", "new", "esc", "back")
+		return a.keyHelp("g", "go", "w", "welcome email", "c", "copy checklist", "r", "re-check", "esc", "back")
+	}
+	if a.welcomeAvailable() {
+		return a.keyHelp("w", "welcome email", "c", "copy checklist", "r", "re-check", "n", "new", "esc", "back")
 	}
 	if ob.plan != nil && ob.plan.CanOverride() {
 		return a.keyHelp("o", "override", "r", "re-check", "n", "new", "esc", "back")
@@ -385,6 +409,11 @@ func (a App) viewOnboard(w int) string {
 				body += "\n" + lipgloss.NewStyle().Foreground(s.p.fail).Width(inner-4).Render(ob.err)
 			}
 			b.WriteString("\n\n" + box.Render(body))
+		}
+		if ob.phase == obWelcome {
+			box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(s.p.accent).Padding(0, 1).Width(inner)
+			b.WriteString("\n\n" + box.Render(s.text.Bold(true).Render("The welcome email is open in your browser. Did you send it?")+"\n"+
+				s.subtle.Width(inner-4).Render("Copy the To, Subject and Body into Mail, fill in anything highlighted, and send it. A yes is recorded in the activity log.")))
 		}
 		if ob.phase == obConfirm {
 			n := ob.plan.Count(onboard.Auto)
@@ -487,4 +516,116 @@ func changeCount(n int) string {
 		return "1 change"
 	}
 	return fmt.Sprintf("%d changes", n)
+}
+
+// ---- The welcome email ----
+
+// showEmail builds a member's email of kind k and opens its copy page in
+// the browser. Tests replace it so they don't open a browser.
+var showEmail = func(k welcome.Kind, cfg *config.Config, p connectors.Person, who string, link connectors.ForumLink) (welcome.Email, error) {
+	e, _, err := k.ForMember(cfg, p, link)
+	if err != nil {
+		return welcome.Email{}, err
+	}
+	_, err = welcome.Open(e, who)
+	return e, err
+}
+
+// welcomeOpenedMsg reports that the welcome email page was opened (or why
+// not).
+type welcomeOpenedMsg struct {
+	missing []string
+	notes   []string
+	err     error
+}
+
+// welcomeSentMsg carries the plan after the welcome email was recorded as
+// sent.
+type welcomeSentMsg struct {
+	plan onboard.Plan
+	err  error
+}
+
+// welcomeAvailable reports whether the plan has a welcome email to send.
+func (a App) welcomeAvailable() bool {
+	p := a.onboard.plan
+	if p == nil || !p.Ready || (a.onboard.phase != obPlan && a.onboard.phase != obDone) {
+		return false
+	}
+	for _, s := range p.Steps {
+		if s.System == onboard.WelcomeStep {
+			return s.Kind == onboard.Manual && s.Outcome == onboard.NotRun
+		}
+	}
+	return false
+}
+
+// openWelcome builds and opens the welcome email in the background, with
+// the member's forum invite link filled in.
+func (a App) openWelcome() tea.Cmd {
+	deps, p, who := a.deps, a.onboard.plan.Person, a.onboard.plan.Who()
+	inviteToCreate := a.onboard.plan.Next() >= 0 // e.g. the forum invite, if Go hasn't been pressed
+	return func() tea.Msg {
+		cfg, err := deps.LoadConfig()
+		if errors.Is(err, config.ErrNotFound) {
+			cfg, err = &config.Config{}, nil
+		}
+		if err != nil {
+			return welcomeOpenedMsg{err: err}
+		}
+		link, err := welcome.InviteLink(context.Background(), deps.Connectors(cfg, deps.Secrets(cfg)), p.Email)
+		switch {
+		case errors.Is(err, welcome.ErrNoInvite) && inviteToCreate:
+			return welcomeOpenedMsg{err: errors.New("they don't have a forum invite yet. Press g first to create it (with the plan's other changes), then w")}
+		case errors.Is(err, welcome.ErrNoInvite) && !cfg.Discourse.CreateInvites:
+			return welcomeOpenedMsg{err: errors.New("they don't have a forum invite yet, and the tool isn't allowed to create invites. Run: aps-tools setup discourse")}
+		case err != nil:
+			return welcomeOpenedMsg{err: err}
+		}
+		e, err := showEmail(welcome.Welcome, cfg, p, who, link)
+		return welcomeOpenedMsg{missing: e.Missing, notes: e.Notes, err: err}
+	}
+}
+
+// recordWelcomeSent records the webmaster's "yes, I sent it".
+func (a App) recordWelcomeSent() tea.Cmd {
+	p := *a.onboard.plan
+	p.Steps = slices.Clone(p.Steps)
+	log, logErr := a.activityLog()
+	return func() tea.Msg {
+		if logErr != nil {
+			return welcomeSentMsg{plan: p, err: logErr}
+		}
+		err := p.WelcomeSent(log)
+		return welcomeSentMsg{plan: p, err: err}
+	}
+}
+
+// welcomeMsg handles the welcome email's background results.
+func (a App) welcomeMsg(msg tea.Msg) App {
+	ob := &a.onboard
+	switch msg := msg.(type) {
+	case welcomeOpenedMsg:
+		if msg.err != nil {
+			ob.notice = "Couldn't open the welcome email: " + msg.err.Error()
+			return a
+		}
+		ob.before, ob.phase = ob.phase, obWelcome
+		ob.notice = ""
+		var parts []string
+		parts = append(parts, msg.notes...)
+		if len(msg.missing) > 0 {
+			parts = append(parts, "Fill in after pasting (highlighted in the email): {{"+strings.Join(msg.missing, "}}, {{")+"}}")
+		}
+		ob.notice = strings.Join(parts, " ")
+		a.scroll = toBottom // the question is under the plan
+	case welcomeSentMsg:
+		if msg.err != nil {
+			ob.notice = "Couldn't record it: " + msg.err.Error()
+			return a
+		}
+		ob.plan = &msg.plan
+		ob.notice = "Welcome email recorded as sent in the activity log."
+	}
+	return a
 }

@@ -74,6 +74,16 @@ key_type = {{ q .Discourse.KeyType }}
 # Identifies this computer's copy of the tool to the forum (user keys only).
 # Not a secret. "aps-tools setup discourse" fills it in.
 client_id = {{ q .Discourse.ClientID }}
+# The link to the forum's "Getting Started" topics (a tag or category), used
+# in the welcome email. "aps-tools setup email" asks for it.
+getting_started_url = {{ q .Discourse.GettingStartedURL }}
+# true lets onboarding create each new member's personal invite link (no
+# email from the forum; the link goes in your welcome email). It needs a key
+# with write access: "aps-tools setup discourse" asks.
+create_invites = {{ .Discourse.CreateInvites }}
+# The topic new members land on after signing up through their invite, e.g.
+# https://forum.example.org/t/welcome/5 (optional).
+welcome_topic_url = {{ q .Discourse.WelcomeTopicURL }}
 
 [google_sheet]
 # The membership Google Sheet. "aps-tools setup sheet" fills these in.

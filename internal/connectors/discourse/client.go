@@ -1,6 +1,7 @@
 package discourse
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -82,14 +83,7 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 	if err != nil {
 		return fmt.Errorf("couldn't build a request for Discourse: %w", err)
 	}
-	if c.usesUserKey() {
-		req.Header.Set("User-Api-Key", c.key)
-		req.Header.Set("User-Api-Client-Id", c.clientID)
-	} else {
-		req.Header.Set("Api-Key", c.key)
-		req.Header.Set("Api-Username", c.username)
-	}
-	req.Header.Set("Accept", "application/json")
+	c.authorize(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("couldn't reach %s — check your internet connection and the forum address", c.baseURL)
@@ -103,6 +97,69 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 		return fmt.Errorf("Discourse sent back something unexpected (is %s really the forum address?)", c.baseURL)
 	}
 	return nil
+}
+
+// post sends a JSON POST request (a change on the forum) and decodes the
+// answer into out. Only CreateInvite uses it: the tool's one write.
+func (c *Client) post(ctx context.Context, path string, body, out any) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("couldn't build a request for Discourse: %w", err)
+	}
+	c.authorize(req)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("couldn't reach %s — check your internet connection and the forum address", c.baseURL)
+	}
+	defer resp.Body.Close()
+	answer, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
+		return errors.New("the forum refused to make the change: the key may be read-only. Run: aps-tools setup discourse, and allow the tool to create invites")
+	}
+	if err := explainStatus(resp.StatusCode, answer); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(answer, out); err != nil {
+		return fmt.Errorf("Discourse sent back something unexpected (is %s really the forum address?)", c.baseURL)
+	}
+	return nil
+}
+
+// authorize adds the key headers for whichever kind of key this is.
+func (c *Client) authorize(req *http.Request) {
+	if c.usesUserKey() {
+		req.Header.Set("User-Api-Key", c.key)
+		req.Header.Set("User-Api-Client-Id", c.clientID)
+	} else {
+		req.Header.Set("Api-Key", c.key)
+		req.Header.Set("Api-Username", c.username)
+	}
+	req.Header.Set("Accept", "application/json")
+}
+
+// CreateInvite makes a personal, single-use invite for email WITHOUT the
+// forum emailing them (skip_email): the link goes in the webmaster's
+// welcome email instead. topicID, if not 0, is the topic they land on after
+// signing up. The forum's own expiry setting applies. This CHANGES the
+// forum: callers must preview it and check for an existing invite first.
+func (c *Client) CreateInvite(ctx context.Context, email string, topicID int) (Invite, error) {
+	body := map[string]any{"email": email, "skip_email": true, "max_redemptions_allowed": 1}
+	if topicID > 0 {
+		body["topic_id"] = topicID
+	}
+	var inv Invite
+	if err := c.post(ctx, "/invites.json", body, &inv); err != nil {
+		return Invite{}, err
+	}
+	if inv.Link == "" {
+		return inv, errors.New("the forum created the invite but didn't send back its link — find it under your profile → Invites")
+	}
+	return inv, nil
 }
 
 func explainStatus(code int, body []byte) error {
@@ -293,6 +350,10 @@ func (c *Client) AllInvites(ctx context.Context, filter string) ([]Invite, error
 
 // Invite is one email invitation.
 type Invite struct {
+	ID int `json:"id"`
+	// Link is the invite's sign-up link. The forum shows it to the person
+	// who made the invite (the key's owner).
+	Link      string `json:"link"`
 	Email     string `json:"email"`
 	CreatedAt string `json:"created_at"`
 	ExpiresAt string `json:"expires_at"`

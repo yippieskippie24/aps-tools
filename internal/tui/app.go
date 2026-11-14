@@ -136,7 +136,7 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case spinTickMsg:
-		busy := a.onboard.phase == obPlanning || a.onboard.phase == obRunning || a.members.loading
+		busy := a.onboard.phase == obPlanning || a.onboard.phase == obRunning || a.members.loading || a.members.opening
 		if !a.checking && !a.member.running && !busy {
 			return a, nil
 		}
@@ -165,8 +165,14 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case memberEmailOpenedMsg, memberEmailSentMsg:
+		return a.memberEmailMsg(msg), nil
+
 	case rosterDoneMsg, memberRefreshedMsg:
 		return a.membersMsg(msg), nil
+
+	case welcomeOpenedMsg, welcomeSentMsg:
+		return a.welcomeMsg(msg), nil
 
 	case planDoneMsg, stepDoneMsg, obCopiedMsg:
 		if _, ok := msg.(planDoneMsg); ok {

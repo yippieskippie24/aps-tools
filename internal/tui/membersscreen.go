@@ -13,6 +13,7 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/check"
 	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/roster"
+	"github.com/yippieskippie24/aps-tools/internal/welcome"
 )
 
 // This file is the "Members" screen: everyone on the membership sheet,
@@ -35,6 +36,14 @@ type membersView struct {
 	cursor  int // highlighted row in the current tab
 	top     int // first row shown (the list scrolls under the headings)
 	notice  string
+
+	// Emailing the highlighted member (see memberemail.go).
+	picking  bool           // the list of emails is showing
+	choices  []welcome.Kind // the emails, the suggested one first
+	pick     int            // highlighted email in the list
+	opening  bool           // building and opening the email
+	sending  *welcome.Kind  // the email that's open: "Did you send it?"
+	emailFor roster.Entry   // who it's for
 }
 
 // memberTabs are the tabs, in order: each group, then everyone.
@@ -157,6 +166,9 @@ func (a App) updateMembers(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if mv.loading {
 		return a, nil
 	}
+	if mv.picking || mv.sending != nil || mv.opening {
+		return a.updateMemberEmail(msg)
+	}
 	if key == "r" {
 		return a.loadRoster()
 	}
@@ -189,6 +201,11 @@ func (a App) updateMembers(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "c":
 		if e, ok := mv.selected(); ok {
 			return a.checkFromMembers(e.Email)
+		}
+	case "e":
+		if e, ok := mv.selected(); ok {
+			a.startEmailPicker(e)
+			return a, nil
 		}
 	case "?":
 		a.screen = screenHelp
@@ -225,10 +242,16 @@ func (a App) checkFromMembers(email string) (tea.Model, tea.Cmd) {
 
 // membersKeys is the footer for the Members screen.
 func (a App) membersKeys() string {
-	if a.members.loading || a.members.roster == nil {
+	mv := a.members
+	switch {
+	case mv.loading || mv.roster == nil:
 		return a.keyHelp("r", "check again", "esc", "back")
+	case mv.picking:
+		return a.keyHelp("↑/↓", "choose", "enter", "open it", "esc", "cancel")
+	case mv.sending != nil:
+		return a.keyHelp("y", "yes, I sent it", "n", "not yet")
 	}
-	return a.keyHelp("←/→", "group", "↑/↓", "move", "enter", "onboard", "c", "check", "r", "refresh", "esc", "back")
+	return a.keyHelp("←/→", "group", "↑/↓", "move", "enter", "onboard", "e", "email", "c", "check", "r", "refresh", "esc", "back")
 }
 
 // membersHeader is how many lines come above the list (heading, age line,
@@ -315,6 +338,11 @@ func (a App) viewMembers(w int) string {
 
 	for _, p := range r.Problems {
 		b.WriteString(lipgloss.NewStyle().Foreground(s.p.warn).Render(fitWidth("! "+p, inner)) + "\n")
+	}
+
+	if mv.picking || mv.sending != nil || mv.opening {
+		b.WriteString(a.viewMemberEmail(inner))
+		return strings.TrimRight(b.String(), "\n")
 	}
 
 	// Columns: name, (email when there's room), one icon per system, then

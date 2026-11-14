@@ -91,16 +91,18 @@ Each item is usable on its own, safest first:
    - the "Onboard" menu item, which today shows "coming soon".
 
    No outside system is changed yet; it runs the plan and stops. ✅ **Built.**
-2. **Welcome email copy page.** It changes nothing anywhere, and only needs the text.
+2. **Welcome email copy page.** It changes nothing anywhere, and only needs the text. ✅ **Built:**
+   `aps-tools setup email`, `aps-tools email welcome <email>`, and **w** in the onboarding screen. The
+   Getting Started link is asked for by `setup email` rather than `setup discourse`, so setting
+   it doesn't mean re-approving the forum key. See [member-emails.md](../member-emails.md).
 3. **Mailing list (Cloudflare):** destination address, then `LIST_NEWS`. Tried on the test account
    first.
 4. **Jira customer.**
-5. **Discourse personal invite link:** re-approve the forum key with write access when we get
-   here. Confirm Discourse's invite API (`POST /invites.json` with the member's email and
-   `skip_email`) returns the link, and that its `topic_id` option sends new members to the welcome
-   topic. The welcome email copy page already has a slot for the link, so this step fills it in.
-   `setup discourse` will ask for the **welcome topic** and the **Getting Started** tag. You paste
-   their links, and they're saved in your settings, not in this repository.
+5. **Discourse personal invite link:** ✅ **Built** (brought forward, so the welcome email needs
+   no hand editing; [decision 0014](../decisions/0014-discourse-invites-write-access.md)).
+   `setup discourse` asks whether the tool may create invites (a read-and-write key) and for the
+   optional **welcome topic** link. Onboarding creates the invite with `POST /invites.json`
+   (`skip_email`, single use, `topic_id`), and the welcome email fills in its link.
 6. **Sheet write-back:** the details tab and status column, once the share is approved.
 
 Each step gets its own decision record where there's a real choice (e.g. how `LIST_NEWS` is

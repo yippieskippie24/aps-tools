@@ -91,8 +91,8 @@ func (c *Connector) TestConnection(ctx context.Context) error {
 	return nil
 }
 
-// CheckMember implements connectors.Connector. Read-only.
-func (c *Connector) CheckMember(ctx context.Context, email string) (connectors.MemberStatus, error) {
+// checkMember is the member check itself (see CheckMember). Read-only.
+func (c *Connector) checkMember(ctx context.Context, email string) (connectors.MemberStatus, error) {
 	user, found, err := c.client.FindUserByEmail(ctx, email)
 	if err != nil {
 		return connectors.MemberStatus{}, err
@@ -117,6 +117,99 @@ const fixInvite = "Send them an invite: on the forum, open your profile → Invi
 
 // memberStatus decides the result. It is separate from CheckMember so it can
 // be tested without a network.
+// CheckMember implements connectors.Connector. Read-only.
+func (c *Connector) CheckMember(ctx context.Context, email string) (connectors.MemberStatus, error) {
+	st, err := c.checkMember(ctx, email)
+	return c.mentionInvites(st), err
+}
+
+// mentionInvites adds "the tool can do this" to the advice for someone who
+// needs an invite, when the tool isn't allowed to create invites yet.
+func (c *Connector) mentionInvites(st connectors.MemberStatus) connectors.MemberStatus {
+	if st.State == connectors.StateMissing && !c.cfg.CreateInvites {
+		st.Fix += " (Or let the tool create invites: run aps-tools setup discourse.)"
+	}
+	return st
+}
+
+// PlanOnboard implements connectors.Onboarder: someone with no account and
+// no pending invite gets a personal invite, if the tool is allowed to
+// create invites. It changes nothing.
+func (c *Connector) PlanOnboard(_ context.Context, _ connectors.Person, current connectors.MemberStatus) (string, error) {
+	if !c.cfg.CreateInvites || current.State != connectors.StateMissing {
+		return "", nil
+	}
+	action := "Create a personal invite link (the forum won't email them; it goes in your welcome email)"
+	if c.welcomeTopic() > 0 {
+		action += ", landing on the welcome topic"
+	}
+	return action, nil
+}
+
+// Onboard implements connectors.Onboarder: create the member's personal
+// invite. It checks again first: someone who now has an account, or a
+// pending invite with a link, isn't invited again.
+func (c *Connector) Onboard(ctx context.Context, p connectors.Person) (string, error) {
+	if !c.cfg.CreateInvites {
+		return "", errors.New("the tool isn't allowed to create invites: run aps-tools setup discourse")
+	}
+	if u, found, err := c.client.FindUserByEmail(ctx, p.Email); err != nil {
+		return "", err
+	} else if found && !u.Staged {
+		return "They already have a forum account (@" + u.Username + "); no invite needed.", nil
+	}
+	if inv, err := c.pendingInvite(ctx, p.Email); err != nil {
+		return "", err
+	} else if inv.Link != "" {
+		return "They already have a pending invite; it will be used.", nil
+	}
+	inv, err := c.client.CreateInvite(ctx, p.Email, c.welcomeTopic())
+	if err != nil {
+		return "", err
+	}
+	what := "Created a personal invite link (no email from the forum)"
+	if inv.ExpiresAt != "" {
+		what += "; it expires " + day(inv.ExpiresAt)
+	}
+	return what + ".", nil
+}
+
+// InviteLink implements connectors.InviteLinker. Read-only.
+func (c *Connector) InviteLink(ctx context.Context, email string) (connectors.ForumLink, error) {
+	if u, found, err := c.client.FindUserByEmail(ctx, email); err != nil {
+		return connectors.ForumLink{}, err
+	} else if found && !u.Staged {
+		return connectors.ForumLink{URL: CleanURL(c.cfg.URL), HasAccount: true, Username: u.Username}, nil
+	}
+	inv, err := c.pendingInvite(ctx, email)
+	return connectors.ForumLink{URL: inv.Link}, err
+}
+
+// pendingInvite finds the member's newest unexpired invite from you.
+func (c *Connector) pendingInvite(ctx context.Context, email string) (Invite, error) {
+	invites, err := c.client.Invites(ctx, "pending", email)
+	if err != nil {
+		return Invite{}, errors.New("couldn't read invites: " + err.Error())
+	}
+	var best Invite
+	now := time.Now()
+	for _, inv := range invites {
+		if !strings.EqualFold(inv.Email, email) || inv.Expired || (inv.ExpiresAt != "" && !after(inv.ExpiresAt, now)) {
+			continue
+		}
+		if inv.CreatedAt >= best.CreatedAt {
+			best = inv
+		}
+	}
+	return best, nil
+}
+
+// welcomeTopic is the welcome topic's number, or 0 if none is set.
+func (c *Connector) welcomeTopic() int {
+	n, _ := TopicID(c.cfg.WelcomeTopicURL)
+	return n
+}
+
 // CheckMembers implements connectors.BulkChecker. It reads the forum's whole
 // user list and your invites once (a handful of requests, where checking one
 // by one would take several per member and hit the forum's limit of about
@@ -154,7 +247,7 @@ func (c *Connector) CheckMembers(ctx context.Context, emails []string) (map[stri
 				return nil, err
 			}
 		}
-		out[email] = memberStatus(u, found, invites, email, c.cfg.MemberGroup, now)
+		out[email] = c.mentionInvites(memberStatus(u, found, invites, email, c.cfg.MemberGroup, now))
 	}
 	return out, nil
 }

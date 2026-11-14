@@ -90,6 +90,17 @@ type Discourse struct {
 	// ClientID names this computer's copy of the tool to the forum when a
 	// user key is used. Not a secret: it's useless without the key.
 	ClientID string `toml:"client_id"`
+	// GettingStartedURL is the link to the forum's "Getting Started"
+	// topics, for the welcome email ({{GETTING_STARTED_LINK}}).
+	// "aps-tools setup email" asks for it.
+	GettingStartedURL string `toml:"getting_started_url"`
+	// CreateInvites lets onboarding create each new member's personal forum
+	// invite. It needs a key with write access ("aps-tools setup discourse"
+	// asks). Off means the tool only reads the forum.
+	CreateInvites bool `toml:"create_invites"`
+	// WelcomeTopicURL is the topic new members land on after accepting
+	// their invite. Optional.
+	WelcomeTopicURL string `toml:"welcome_topic_url"`
 }
 
 // Discourse key types; see Discourse.KeyType.

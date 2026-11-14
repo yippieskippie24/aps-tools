@@ -137,7 +137,7 @@ func TestPlanSteps(t *testing.T) {
 		{"Forum", Manual, "Invite them."},
 		{"Waiting", Waiting, "Remind them."},
 		{"Offline", Blocked, "aps-tools setup offline"},
-		{"Welcome email", Manual, "from your own mail"},
+		{"Welcome email", Manual, "aps-tools email welcome alex@example.com"},
 		{"Membership sheet record", Later, "later version"},
 	}
 	if len(p.Steps) != len(want) {
@@ -279,5 +279,27 @@ func TestNoOverrideWhenTheSheetCantBeRead(t *testing.T) {
 	p, _ = PrepareOverride(context.Background(), []connectors.Connector{vettedSheet()}, "alex@example.com", "Paid at the meeting")
 	if !p.Ready || p.Override != "" {
 		t.Errorf("vetted member: %+v", p)
+	}
+}
+
+func TestWelcomeSent(t *testing.T) {
+	missingDesk := &fake{name: "Jira", status: connectors.MemberStatus{State: connectors.StateMissing, Fix: "Add them."}}
+	p, _ := Prepare(context.Background(), []connectors.Connector{vettedSheet(), missingDesk}, "alex@example.com")
+	log := activity.Open(filepath.Join(t.TempDir(), "activity.log"))
+	if err := p.WelcomeSent(log); err != nil {
+		t.Fatal(err)
+	}
+	var welcome Step
+	for _, s := range p.Steps {
+		if s.System == WelcomeStep {
+			welcome = s
+		}
+	}
+	if welcome.Outcome != Succeeded {
+		t.Errorf("welcome step = %+v", welcome)
+	}
+	lines, _ := log.Recent(1)
+	if len(lines) != 1 || !strings.Contains(lines[0], "alex@example.com\tWelcome email\tok\tSent by the webmaster") {
+		t.Errorf("log = %v", lines)
 	}
 }

@@ -38,15 +38,16 @@ any other group lists (`LIST_PHOTOS`, …) the same way. See [setup/cloudflare.m
 then enter the member's email. Customers do not use any of the 3 licensed agent seats.
 TBD — confirm whether customers are grouped into an organization.
 
-**4. Discourse.** The forum is **invite-only**, so every member needs an invite. On the forum,
-open your profile → **Invites** → **Invite** and enter their email. They'll get an email to create
-their account. Invites expire after 90 days; if one expires, send a new one. APS doesn't use a
+**4. Discourse.** The forum is **invite-only**, so every member needs an invite. **With the tool:**
+onboarding creates their personal invite link (no email from the forum) and the welcome email
+includes it. **By hand:** on the forum, open your profile → **Invites** → **Invite** and enter their
+email. They'll get an email to create their account. Invites expire after 90 days; if one expires, send a new one. APS doesn't use a
 member group, and new accounts don't need approval. The exact sign-up settings are summarised by `aps-tools discourse discover`. See
 [setup/discourse.md](setup/discourse.md).
 
-**5. Welcome email.** Sent from your own mail. A draft is in the
-[Phase 2 plan](plans/phase-2-onboarding.md#6-welcome-email-draft). The tool will fill it in for you
-in a later version.
+**5. Welcome email.** Sent from your own mail. The tool fills in your template for the member and
+gives you a page to copy it from: press **w** in the onboarding screen, or run
+`aps-tools email welcome <email>`. See [member-emails.md](member-emails.md).
 
 ## Onboarding with the tool
 

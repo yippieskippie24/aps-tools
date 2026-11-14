@@ -15,6 +15,7 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/doctor"
 	"github.com/yippieskippie24/aps-tools/internal/secrets"
+	"github.com/yippieskippie24/aps-tools/internal/welcome"
 )
 
 // testDeps never touches your real settings or Keychain.
@@ -526,5 +527,173 @@ func TestMembersScreen(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Error("opening members and plans must not change anything")
+	}
+}
+
+func TestOnboardWelcomeEmail(t *testing.T) {
+	var opened []string
+	saved := showEmail
+	t.Cleanup(func() { showEmail = saved })
+	showEmail = func(_ welcome.Kind, _ *config.Config, p connectors.Person, who string, _ connectors.ForumLink) (welcome.Email, error) {
+		opened = append(opened, who)
+		return welcome.Email{Missing: []string{"FORUM_INVITE_LINK"}}, nil
+	}
+
+	calls := 0
+	deps := onboardDeps(t, true, &calls)
+	a := tall(t, New(deps))
+	a, _ = a.openOnboard()
+	a = typeText(t, a, "alex@example.com")
+	a, cmd := press(t, a, "enter")
+	a = settle(t, a, cmd)
+	if !strings.Contains(a.View().Content, "welcome email") {
+		t.Fatal("the plan should offer w for the welcome email")
+	}
+
+	a, cmd = press(t, a, "w")
+	a = settle(t, a, cmd)
+	if len(opened) != 1 || opened[0] != "Alex Example <alex@example.com>" || a.onboard.phase != obWelcome {
+		t.Fatalf("opened %v, phase %v", opened, a.onboard.phase)
+	}
+	if view := a.View().Content; !strings.Contains(view, "Did you send it?") || !strings.Contains(view, "{{FORUM_INVITE_LINK}}") {
+		t.Errorf("welcome prompt:\n%s", view)
+	}
+
+	// "not yet" records nothing.
+	a, _ = press(t, a, "n")
+	path, _ := deps.ConfigPath()
+	log := activity.Open(filepath.Join(filepath.Dir(path), activity.FileName))
+	if lines, _ := log.Recent(5); len(lines) != 0 {
+		t.Errorf("not yet: log = %v", lines)
+	}
+
+	// Open it again and say yes.
+	a, cmd = press(t, a, "w")
+	a = settle(t, a, cmd)
+	a, cmd = press(t, a, "y")
+	a = settle(t, a, cmd)
+	lines, _ := log.Recent(5)
+	if len(lines) != 1 || !strings.Contains(lines[0], "Welcome email\tok\tSent by the webmaster") {
+		t.Errorf("log = %v", lines)
+	}
+	if a.welcomeAvailable() {
+		t.Error("after it's sent, w shouldn't offer it again")
+	}
+	if calls != 0 {
+		t.Error("the welcome email must not change any system")
+	}
+}
+
+// fakeForum is a pretend forum: no invite until onboarding creates one.
+type fakeForum struct{ created *bool }
+
+func (fakeForum) ID() string                           { return "discourse" }
+func (fakeForum) Name() string                         { return "Discourse forum" }
+func (fakeForum) Missing() []string                    { return nil }
+func (fakeForum) TestConnection(context.Context) error { return nil }
+func (f fakeForum) CheckMember(context.Context, string) (connectors.MemberStatus, error) {
+	if *f.created {
+		return connectors.MemberStatus{State: connectors.StatePending, Summary: "Invited."}, nil
+	}
+	return connectors.MemberStatus{State: connectors.StateMissing, Summary: "No forum account."}, nil
+}
+func (fakeForum) PlanOnboard(context.Context, connectors.Person, connectors.MemberStatus) (string, error) {
+	return "Create a personal invite link", nil
+}
+func (f fakeForum) Onboard(context.Context, connectors.Person) (string, error) {
+	*f.created = true
+	return "Created a personal invite link.", nil
+}
+func (f fakeForum) InviteLink(context.Context, string) (connectors.ForumLink, error) {
+	if *f.created {
+		return connectors.ForumLink{URL: "https://forum.example.org/invites/abc"}, nil
+	}
+	return connectors.ForumLink{}, nil
+}
+
+func TestWelcomeEmailGetsTheInviteLink(t *testing.T) {
+	var links []string
+	saved := showEmail
+	t.Cleanup(func() { showEmail = saved })
+	showEmail = func(_ welcome.Kind, _ *config.Config, _ connectors.Person, _ string, link connectors.ForumLink) (welcome.Email, error) {
+		links = append(links, link.URL)
+		return welcome.Email{}, nil
+	}
+	created := false
+	deps := onboardDeps(t, true, new(int))
+	deps.Connectors = func(*config.Config, secrets.Store) []connectors.Connector {
+		return []connectors.Connector{fakeSheet{connectors.MemberStatus{State: connectors.StateOK, Summary: "Vetted."}}, fakeForum{&created}}
+	}
+	a := tall(t, New(deps))
+	a, _ = a.openOnboard()
+	a = typeText(t, a, "alex@example.com")
+	a, cmd := press(t, a, "enter")
+	a = settle(t, a, cmd)
+
+	// Before Go there's no invite: w explains instead of opening.
+	a, cmd = press(t, a, "w")
+	a = settle(t, a, cmd)
+	if len(links) != 0 || !strings.Contains(a.onboard.notice, "Press g first") {
+		t.Fatalf("w before go: opened %v, notice %q", links, a.onboard.notice)
+	}
+
+	// Go creates the invite; then w fills in its link.
+	a, _ = press(t, a, "g")
+	a, cmd = press(t, a, "y")
+	a = settle(t, a, cmd)
+	if !created || a.onboard.phase != obDone {
+		t.Fatalf("go: created %v, phase %v", created, a.onboard.phase)
+	}
+	a, cmd = press(t, a, "w")
+	a = settle(t, a, cmd)
+	if len(links) != 1 || links[0] != "https://forum.example.org/invites/abc" {
+		t.Errorf("welcome email links = %v", links)
+	}
+}
+
+func TestEmailFromMembersScreen(t *testing.T) {
+	var opened []string
+	saved := showEmail
+	t.Cleanup(func() { showEmail = saved })
+	showEmail = func(k welcome.Kind, _ *config.Config, p connectors.Person, _ string, _ connectors.ForumLink) (welcome.Email, error) {
+		opened = append(opened, k.ID+" "+p.Email)
+		return welcome.Email{}, nil
+	}
+	calls := 0
+	deps := onboardDeps(t, true, &calls)
+	deps.Connectors = func(*config.Config, secrets.Store) []connectors.Connector {
+		return []connectors.Connector{rosterSheet{fakeSheet{connectors.MemberStatus{State: connectors.StateOK, Summary: "Vetted."}}}, fakeList{&calls}}
+	}
+	a := tall(t, New(deps))
+	a, cmd := press(t, a, "1")
+	a = settle(t, a, cmd)
+
+	// Ned isn't vetted: the suggestion is "Application in progress".
+	for i := 0; i < 3; i++ {
+		a, _ = press(t, a, "right")
+	}
+	a, _ = press(t, a, "e")
+	if !a.members.picking || a.members.choices[0].ID != welcome.ApplicationInProgress.ID {
+		t.Fatalf("picker: %v %+v", a.members.picking, a.members.choices)
+	}
+	view := a.View().Content
+	if !strings.Contains(view, "Application in progress") || !strings.Contains(view, "suggested") || !strings.Contains(view, "Changing your email address") {
+		t.Errorf("picker view:\n%s", view)
+	}
+
+	a, cmd = press(t, a, "enter")
+	a = settle(t, a, cmd)
+	if len(opened) != 1 || opened[0] != "application-in-progress ned@example.com" || a.members.sending == nil {
+		t.Fatalf("opened %v, sending %v", opened, a.members.sending)
+	}
+	a, cmd = press(t, a, "y")
+	a = settle(t, a, cmd)
+	path, _ := deps.ConfigPath()
+	lines, _ := activity.Open(filepath.Join(filepath.Dir(path), activity.FileName)).Recent(5)
+	if len(lines) != 1 || !strings.Contains(lines[0], "ned@example.com\tApplication in progress\tok\tSent by the webmaster") {
+		t.Errorf("log = %v", lines)
+	}
+	if !strings.Contains(a.View().Content, "Recorded as sent") {
+		t.Error("no confirmation shown")
 	}
 }

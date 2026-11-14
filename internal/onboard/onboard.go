@@ -348,10 +348,10 @@ func prepare(ctx context.Context, conns []connectors.Connector, email, override 
 	// 3. The parts of onboarding that aren't one system's check. Someone
 	// already set up everywhere is an existing member, not a new one, so
 	// they don't need a welcome email.
-	welcome := Step{System: "Welcome email", Kind: Manual,
-		Action: "Send it from your own mail for now. (The tool will draft it in a later version.)"}
+	welcome := Step{System: WelcomeStep, Kind: Manual,
+		Action: "Open it ready to copy into Mail (w in the app, or: aps-tools email welcome " + email + "), then send it."}
 	if allDone(steps) {
-		welcome = Step{System: "Welcome email", Kind: Done,
+		welcome = Step{System: WelcomeStep, Kind: Done,
 			Now: "Not needed: they're already set up everywhere. (If they never had one, you can still send it.)"}
 	}
 	record := Step{System: "Membership sheet record", Kind: Later,
@@ -514,6 +514,32 @@ func (p *Plan) Failures() int {
 		}
 	}
 	return n
+}
+
+// WelcomeStep is the welcome email step's name in the plan.
+const WelcomeStep = "Welcome email"
+
+// WelcomeSent records that the webmaster sent the welcome email (the tool
+// can't tell; they confirm it), in the activity log and in the plan.
+func (p *Plan) WelcomeSent(log *activity.Log) error {
+	for i := range p.Steps {
+		if p.Steps[i].System == WelcomeStep {
+			p.Steps[i].Outcome, p.Steps[i].Result = Succeeded, "Sent (you confirmed it)."
+		}
+	}
+	return LogWelcomeSent(log, p.Person.Email)
+}
+
+// LogWelcomeSent records in the activity log that the webmaster confirmed
+// sending a member's welcome email.
+func LogWelcomeSent(log *activity.Log, email string) error {
+	return LogEmailSent(log, email, WelcomeStep)
+}
+
+// LogEmailSent records in the activity log that the webmaster confirmed
+// sending a member an email (named e.g. "Forum access help").
+func LogEmailSent(log *activity.Log, email, name string) error {
+	return log.Add(activity.Entry{Member: email, System: name, OK: true, What: "Sent by the webmaster (confirmed in the tool)"})
 }
 
 // LogOverride records the webmaster's decision to override the sheet, and

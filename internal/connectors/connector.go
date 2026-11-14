@@ -171,6 +171,27 @@ type BulkChecker interface {
 	CheckMembers(ctx context.Context, emails []string) (map[string]MemberStatus, error)
 }
 
+// InviteLinker is implemented by the forum connector, for the welcome email.
+type InviteLinker interface {
+	Connector
+	// InviteLink returns the link to put in the member's welcome email:
+	// their pending personal invite's link, or the forum's address when
+	// they already have an account. An empty URL means there's neither yet
+	// (onboard them first). READ-ONLY.
+	InviteLink(ctx context.Context, email string) (ForumLink, error)
+}
+
+// ForumLink is the forum link for a member's welcome email.
+type ForumLink struct {
+	// URL is their personal invite link, or the forum's address.
+	URL string
+	// HasAccount is true when they already have a forum account, so URL is
+	// the forum's address rather than an invite.
+	HasAccount bool
+	// Username is their forum username, when they have an account.
+	Username string
+}
+
 // DirectoryEntry is one member on the membership list, with the list's
 // verdict on them (the onboarding gate).
 type DirectoryEntry struct {

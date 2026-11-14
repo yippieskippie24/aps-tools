@@ -10,6 +10,7 @@ One guide per connection. Do them in this order:
 | 3 | [Mailing list (Cloudflare)](cloudflare.md) | APS email and the mailing list | Available |
 | 4 | [Membership Google Sheet](google-sheet.md) | The master member list | Available |
 | 5 | [Discourse](discourse.md) | The APS forum | Available |
+| 6 | [Member emails](../member-emails.md): `aps-tools setup email` | The Getting Started link and your email templates | Available |
 
 After each one, run `aps-tools doctor` to confirm it's connected.
 

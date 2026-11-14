@@ -30,7 +30,7 @@ system; your job is to create keys and connect the tool.
 | Google Sheet (membership list) | Edit access to the sheet | A free Google Cloud service account, shared on the sheet | [docs/setup/google-sheet.md](setup/google-sheet.md) |
 | Cloudflare (APS email + mailing list) | Membership on the APS Cloudflare account | A read-only Cloudflare API token | [docs/setup/cloudflare.md](setup/cloudflare.md) |
 | Jira Service Management | An agent seat on the APS Jira site (free plan = 3 seats) | An Atlassian API token from your own account | [docs/setup/jira.md](setup/jira.md) |
-| Discourse | Admin on the APS Discourse site | A read-only key you approve in your browser during setup | [docs/setup/discourse.md](setup/discourse.md) |
+| Discourse | Admin on the APS Discourse site | A key you approve in your browser during setup (read-only, or read and write so onboarding can create invites) | [docs/setup/discourse.md](setup/discourse.md) |
 | GitHub (this tool's code) | Optional: maintainer access to the repo | Nothing, unless you want to change the tool | [development.md](development.md) |
 
 **Outgoing webmaster checklist** (do this before you leave):
@@ -64,6 +64,7 @@ To update later: `brew upgrade aps-tools`.
 |---|---|---|
 | Settings (URLs, IDs) | `~/.config/aps-tools/config.toml` — run `aps-tools config path` to see it | Yes — no secrets in it |
 | API keys and tokens | macOS **Keychain Access** app (search `aps-tools`), **or** your 1Password, depending on `aps-tools setup secrets` | **No** |
+| Member email templates | `~/.config/aps-tools/*-email.md` (welcome, forum access help, …). Edit them in TextEdit (`aps-tools setup email` opens the folder) | Yes: no member data in them |
 | Activity log (every change the tool made) | `~/.config/aps-tools/activity.log`. Run `aps-tools log` for the latest, or open it in TextEdit | **No**: it names members. Hand it over to the next webmaster, but don't post it |
 
 ## 5. Getting help

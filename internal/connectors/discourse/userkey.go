@@ -33,13 +33,22 @@ import (
 	"strings"
 )
 
-// UserKeyScopes is what the tool asks for: "read" lets it look (GET
+// UserKeyScopes is what a read-only key asks for: "read" lets it look (GET
 // requests) with the webmaster's own permissions, and nothing else.
 const UserKeyScopes = "read"
+
+// UserKeyWriteScopes is what the key asks for when the webmaster lets the
+// tool create invites. Discourse has no narrower scope than "write", which
+// allows anything the webmaster's admin account can do; the tool's code only
+// ever creates invites (Client.CreateInvite). See decision 0014.
+const UserKeyWriteScopes = "read,write"
 
 // UserKeyAppName is how the tool appears on the forum's approval page and
 // in the webmaster's list of authorized apps (where it can be revoked).
 const UserKeyAppName = "aps-tools (APS Webmaster tool, read-only)"
+
+// UserKeyWriteAppName is the name for a key that can create invites.
+const UserKeyWriteAppName = "aps-tools (APS Webmaster tool: reads, and creates member invites)"
 
 // NewClientID returns a random ID that names this computer's copy of the
 // tool to the forum. Setup saves it, so approving again later replaces the
@@ -50,27 +59,33 @@ func NewClientID() string { return randomHex(16) }
 // send the webmaster to URL, then pass what they paste to Unlock.
 type UserKeyRequest struct {
 	ClientID string
+	write    bool // ask for write access too (to create invites)
 	nonce    string
 	private  *rsa.PrivateKey
 }
 
-// NewUserKeyRequest creates a fresh key pair for one approval.
-func NewUserKeyRequest(clientID string) (*UserKeyRequest, error) {
+// NewUserKeyRequest creates a fresh key pair for one approval. write asks
+// for write access as well as read, so onboarding can create invites.
+func NewUserKeyRequest(clientID string, write bool) (*UserKeyRequest, error) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, errors.New("couldn't create a key pair: " + err.Error())
 	}
-	return &UserKeyRequest{ClientID: clientID, nonce: randomHex(12), private: priv}, nil
+	return &UserKeyRequest{ClientID: clientID, write: write, nonce: randomHex(12), private: priv}, nil
 }
 
 // URL is the forum page where the webmaster approves the key.
 func (r *UserKeyRequest) URL(siteURL string) string {
 	der, _ := x509.MarshalPKIXPublicKey(&r.private.PublicKey)
 	pub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
+	name, scopes := UserKeyAppName, UserKeyScopes
+	if r.write {
+		name, scopes = UserKeyWriteAppName, UserKeyWriteScopes
+	}
 	q := url.Values{
-		"application_name": {UserKeyAppName},
+		"application_name": {name},
 		"client_id":        {r.ClientID},
-		"scopes":           {UserKeyScopes},
+		"scopes":           {scopes},
 		"public_key":       {string(pub)},
 		"nonce":            {r.nonce},
 	}
@@ -165,4 +180,18 @@ func ExplainStoredKey(stored, want string) string {
 	default:
 		return "That item holds a different key, probably from an earlier try. Each approval makes a new key, so paste the one on your clipboard now over it"
 	}
+}
+
+var topicPath = regexp.MustCompile(`/t/(?:[^/]+/)?(\d+)`)
+
+// TopicID finds the topic number in a forum topic link, e.g.
+// https://forum.example.org/t/welcome-to-the-forum/5 → 5. ok is false when
+// the link isn't a topic.
+func TopicID(link string) (int, bool) {
+	m := topicPath.FindStringSubmatch(link)
+	if m == nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(m[1])
+	return n, err == nil && n > 0
 }

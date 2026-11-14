@@ -35,6 +35,8 @@ func setupDiscourse(ctx context.Context, out io.Writer) error {
 	const rerun = "aps-tools setup discourse"
 
 	site := cfg.Discourse.URL
+	createInvites := true // the recommended choice; read-only is the alternative
+	welcomeTopic := cfg.Discourse.WelcomeTopicURL
 	keyType := config.DiscourseUserKey
 	if cfg.Discourse.UsesAdminKey() {
 		keyType = config.DiscourseAdminKey
@@ -42,7 +44,7 @@ func setupDiscourse(ctx context.Context, out io.Writer) error {
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewNote().
 			Title("Connect the Discourse forum").
-			Description("The tool gets a READ-ONLY key for your own admin account.\n"+
+			Description("The tool gets a key for your own admin account.\n"+
 				"Step-by-step guide: docs/setup/discourse.md\n\n"+
 				"Nothing is saved until the key has been tested."),
 		huh.NewInput().
@@ -53,6 +55,28 @@ func setupDiscourse(ctx context.Context, out io.Writer) error {
 			Validate(func(s string) error {
 				if !strings.Contains(discourse.CleanURL(s), ".") {
 					return errors.New("enter the forum's address, like forum.example.org")
+				}
+				return nil
+			}),
+		huh.NewSelect[bool]().
+			Title("What may the tool do on the forum?").
+			Description("Creating invites lets onboarding make each new member's personal\ninvite link and put it in your welcome email (no email from the forum).").
+			Options(
+				huh.NewOption("Look up members, and create invites for new members (recommended)", true),
+				huh.NewOption("Only look things up (read-only)", false),
+			).
+			Value(&createInvites),
+		huh.NewInput().
+			Title("Welcome topic (optional)").
+			Description("Where new members land after signing up through their invite.\nOpen the topic on the forum and copy its address. Leave blank to skip.").
+			Placeholder("https://forum.example.org/t/welcome/5").
+			Value(&welcomeTopic).
+			Validate(func(s string) error {
+				if s = strings.TrimSpace(s); s == "" {
+					return nil
+				}
+				if _, ok := discourse.TopicID(s); !ok {
+					return errors.New("that isn't a topic link: it should contain /t/… and a number")
 				}
 				return nil
 			}),
@@ -80,7 +104,7 @@ func setupDiscourse(ctx context.Context, out io.Writer) error {
 		if clientID == "" {
 			clientID = discourse.NewClientID()
 		}
-		keyValue, err = approveUserKey(ctx, out, site, clientID)
+		keyValue, err = approveUserKey(ctx, out, site, clientID, createInvites)
 		if err != nil {
 			return err
 		}
@@ -99,7 +123,7 @@ func setupDiscourse(ctx context.Context, out io.Writer) error {
 					}
 					return nil
 				}),
-			adminKey.field("Create one on the forum: Admin → Advanced → API keys → New API key\n→ User level: Single user (you), Scope: Read-only."),
+			adminKey.field(adminKeyHelp(createInvites)),
 		)).WithTheme(formTheme)
 		if err := form.RunWithContext(ctx); err != nil {
 			return cancelled(err)
@@ -141,13 +165,12 @@ func setupDiscourse(ctx context.Context, out io.Writer) error {
 	} else if where, err = saveUserKey(ctx, out, cfg, keyValue); err != nil {
 		return err
 	}
-	cfg.Discourse = config.Discourse{
-		URL:         discourse.CleanURL(site),
-		Username:    me.Username,
-		MemberGroup: memberGroup,
-		KeyType:     keyType,
-		ClientID:    clientID,
-	}
+	// Update only what this setup decides, so other forum settings (like
+	// the Getting Started link from "setup email") are kept.
+	d := &cfg.Discourse
+	d.URL, d.Username, d.MemberGroup = discourse.CleanURL(site), me.Username, memberGroup
+	d.KeyType, d.ClientID = keyType, clientID
+	d.CreateInvites, d.WelcomeTopicURL = createInvites, strings.TrimSpace(welcomeTopic)
 	if err := config.Save(cfg); err != nil {
 		return err
 	}
@@ -158,10 +181,11 @@ func setupDiscourse(ctx context.Context, out io.Writer) error {
 	return nil
 }
 
-// approveUserKey sends the webmaster to the forum to approve a read-only
-// user API key, then unlocks the text they paste back.
-func approveUserKey(ctx context.Context, out io.Writer, site, clientID string) (string, error) {
-	req, err := discourse.NewUserKeyRequest(clientID)
+// approveUserKey sends the webmaster to the forum to approve a user API key
+// (read-only, or read and write when write is true), then unlocks the text
+// they paste back.
+func approveUserKey(ctx context.Context, out io.Writer, site, clientID string, write bool) (string, error) {
+	req, err := discourse.NewUserKeyRequest(clientID, write)
 	if err != nil {
 		return "", err
 	}
@@ -170,7 +194,12 @@ func approveUserKey(ctx context.Context, out io.Writer, site, clientID string) (
 	lipgloss.Fprintln(out)
 	lipgloss.Fprintln(out, boldStyle.Render("Approve the key on the forum"))
 	lipgloss.Fprintln(out, "  1. A forum page opens in your browser. Sign in as yourself if asked.")
-	lipgloss.Fprintln(out, "  2. Check it names "+boldStyle.Render("aps-tools")+" and asks only to "+boldStyle.Render("read")+", then click "+boldStyle.Render("Authorize")+".")
+	if write {
+		lipgloss.Fprintln(out, "  2. Check it names "+boldStyle.Render("aps-tools")+" and asks to "+boldStyle.Render("read")+" and "+boldStyle.Render("write")+", then click "+boldStyle.Render("Authorize")+".")
+		lipgloss.Fprintln(out, dimStyle.Render("     (Discourse has no narrower permission than write; the tool only ever creates invites.)"))
+	} else {
+		lipgloss.Fprintln(out, "  2. Check it names "+boldStyle.Render("aps-tools")+" and asks only to "+boldStyle.Render("read")+", then click "+boldStyle.Render("Authorize")+".")
+	}
 	lipgloss.Fprintln(out, "  3. Copy the whole block of text the forum shows, and paste it below.")
 	if err := browser.Open(link); err != nil {
 		lipgloss.Fprintln(out, warnStyle.Render("! ")+"Couldn't open your browser. Open this link yourself:")
@@ -246,4 +275,13 @@ func pickMemberGroup(ctx context.Context, out io.Writer, client *discourse.Clien
 		return "", cancelled(err)
 	}
 	return pick, nil
+}
+
+// adminKeyHelp says how to create an admin API key with the right scope.
+func adminKeyHelp(createInvites bool) string {
+	scope := "Scope: Read-only."
+	if createInvites {
+		scope = "Scope: Global (the tool only ever creates invites)."
+	}
+	return "Create one on the forum: Admin → Advanced → API keys → New API key\n→ User level: Single user (you), " + scope
 }

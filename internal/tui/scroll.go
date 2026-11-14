@@ -53,7 +53,7 @@ func (a App) scrolls() bool {
 		return a.member.report != nil && !a.member.running
 	case screenOnboard:
 		switch a.onboard.phase {
-		case obPlan, obDone, obRunning, obConfirm:
+		case obPlan, obDone, obRunning, obConfirm, obWelcome:
 			return true
 		}
 	}

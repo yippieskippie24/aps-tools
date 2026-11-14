@@ -149,12 +149,26 @@ type Roster struct {
 	Directory string
 	// Systems are the other systems' names, in display order.
 	Systems []string
+	// SystemIDs are the same systems' machine names (e.g. "discourse").
+	SystemIDs []string
 	// Entries are sorted by last name, then first name.
 	Entries []Entry
 	// CheckedAt is when the snapshot was taken.
 	CheckedAt time.Time
 	// Problems lists systems that couldn't be checked at all, and why.
 	Problems []string
+}
+
+// States is each system's state for an entry, keyed by the system's
+// machine name (e.g. "cloudflare"), e.g. for suggesting an email.
+func (r Roster) States(e Entry) map[string]connectors.State {
+	out := map[string]connectors.State{}
+	for i, s := range e.Systems {
+		if i < len(r.SystemIDs) {
+			out[r.SystemIDs[i]] = s.State
+		}
+	}
+	return out
 }
 
 // In returns the entries in group g.
@@ -184,6 +198,7 @@ func Load(ctx context.Context, conns []connectors.Connector) (Roster, error) {
 	r := Roster{Directory: lister.Name(), CheckedAt: time.Now()}
 	for _, c := range others {
 		r.Systems = append(r.Systems, c.Name())
+		r.SystemIDs = append(r.SystemIDs, c.ID())
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, bulkTimeout)

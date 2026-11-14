@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}: {{.Who}}</title>
+<style>
+  :root { --bg:#f3f4f6; --card:#fff; --text:#111; --muted:#666; --line:#ddd; --accent:#5a4fcf; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1c1c1e; --card:#2c2c2e; --text:#eee; --muted:#aaa; --line:#444; --accent:#9d8cff; } }
+  body { font-family:-apple-system, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--text); margin:0; padding:24px 16px; }
+  .wrap { max-width:760px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  h1 .dot { color:var(--accent); }
+  .note { color:var(--muted); font-size:14px; margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:24px; }
+  .row { display:flex; align-items:center; gap:10px; margin:10px 0; flex-wrap:wrap; }
+  .label { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); width:64px; }
+  .value { flex:1; font-weight:600; font-size:14px; min-width:200px; overflow-wrap:anywhere; }
+  button { font:inherit; font-size:13px; padding:6px 12px; border-radius:6px; border:1px solid #bbb; background:#fafafa; color:#111; cursor:pointer; }
+  button.done { background:#e6f4ea; border-color:#34a853; }
+  .warn { background:#fff8db; color:#111; border:1px solid #f0d860; padding:10px 12px; border-radius:6px; font-size:13px; margin:0 0 14px; }
+  .info { background:#e8f0fe; color:#111; border:1px solid #9ab8f5; padding:10px 12px; border-radius:6px; font-size:13px; margin:0 0 14px; }
+  .warn ul { margin:6px 0 0; padding-left:20px; }
+  .warn code { background:#fff3a3; padding:0 3px; border-radius:3px; }
+  .steps { color:var(--muted); font-size:13px; margin:14px 0 0; padding-left:20px; }
+  /* The email always shows as it will look in Mail: white background, dark text. */
+  .email-body { border:1px dashed #ccc; border-radius:8px; padding:14px 16px; background:#fff; color:#111;
+                font-family:Helvetica, Arial, sans-serif; font-size:15px; line-height:1.5; }
+</style></head>
+<body><div class="wrap">
+<h1><span class="dot">◆</span> {{.Title}}</h1>
+<p class="note">For {{.Who}}. Copy each part into a new email in Mail, then send it. “Copy body” keeps the formatting. If a button doesn't work, select the text and press ⌘C.</p>
+
+<section class="card">
+  {{range .Notes}}<div class="info">ℹ️ {{.}}</div>{{end}}
+  {{if .Missing}}
+  <div class="warn">⚠️ <b>Fill these in after pasting</b> (they're highlighted in the email):
+    <ul>{{range .Missing}}<li><code>{{"{{"}}{{.Name}}{{"}}"}}</code>: {{.What}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+  <div class="row"><span class="label">To</span><span class="value" id="to">{{.Email.To}}</span>
+    <button onclick="copyText('to', this)">Copy To</button></div>
+  <div class="row"><span class="label">Subject</span><span class="value" id="subject">{{.Email.Subject}}</span>
+    <button onclick="copyText('subject', this)">Copy subject</button></div>
+  <div class="row"><span class="label">Body</span><button onclick="copyRich('body', this)">Copy body</button></div>
+  <div class="email-body" id="body">{{.Body}}</div>
+  <ol class="steps">
+    <li>In Mail, start a new email and paste the To, Subject and Body.</li>
+    <li>Fill in anything highlighted, read it over, and send it.</li>
+    <li>Back in aps-tools, answer “Sent?” so it's recorded in the activity log.</li>
+  </ol>
+</section>
+</div>
+<script>
+function flash(btn) { const t = btn.textContent; btn.textContent = "Copied ✓"; btn.classList.add("done");
+  setTimeout(() => { btn.textContent = t; btn.classList.remove("done"); }, 1500); }
+function copyRich(id, btn) {
+  const el = document.getElementById(id);
+  const range = document.createRange(); range.selectNodeContents(el);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+  let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
+  sel.removeAllRanges();
+  if (ok) flash(btn); else alert("Select the text and press ⌘C.");
+}
+function copyText(id, btn) {
+  const t = document.getElementById(id).textContent;
+  const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
+  ta.remove(); if (ok) flash(btn); else alert("Select the text and press ⌘C.");
+}
+</script>
+</body></html>

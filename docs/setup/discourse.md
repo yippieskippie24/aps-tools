@@ -30,16 +30,25 @@ aps-tools setup discourse
 ```
 
 1. Enter the **forum address**.
-2. Choose **"Approve it in my browser"**.
-3. A forum page opens in your browser. Sign in as yourself if asked. Check that it names
-   **aps-tools** and asks only to **read**, then click **Authorize**.
-4. The forum shows a block of scrambled-looking text. **Copy all of it**, go back to the
+2. Choose **what the tool may do**:
+   - **"Look up members, and create invites for new members"** (recommended). Onboarding then
+     creates each new member's personal invite link and puts it in your welcome email. The key
+     asks for **read and write** access. Discourse has nothing narrower, but the tool only ever
+     creates invites ([decision 0014](../decisions/0014-discourse-invites-write-access.md)).
+   - **"Only look things up"**: read-only, as before. You'd invite new members by hand.
+3. Optionally paste the **welcome topic** link: the topic new members land on after signing up
+   through their invite. Open the topic on the forum and copy its address.
+4. Choose **"Approve it in my browser"**.
+5. A forum page opens in your browser. Sign in as yourself if asked. Check that it names
+   **aps-tools** and asks to **read** (and **write**, if you chose invites), then click
+   **Authorize**.
+6. The forum shows a block of scrambled-looking text. **Copy all of it**, go back to the
    Terminal, paste it, and press Enter. Only this run of the tool can unscramble it, so the text
    is useless to anyone else.
-5. The tool **checks** the key belongs to an admin and **checks** it can look members up.
-6. It asks whether **every member should be in a particular group** (e.g. `members`). If you
+7. The tool **checks** the key belongs to an admin and **checks** it can look members up.
+8. It asks whether **every member should be in a particular group** (e.g. `members`). If you
    pick one, the member check confirms each person is in it. If not, choose "No".
-7. It **saves** the key:
+9. It **saves** the key:
    - **Keychain:** saved automatically.
    - **1Password:** the tool puts the **key** on your clipboard. It's a short code, not the
      scrambled text from the forum page, so don't copy anything else yet. In 1Password, create an
@@ -52,6 +61,9 @@ aps-tools setup discourse
      your clipboard so you can fix the item.
 
 Nothing is saved until the key has passed every check.
+
+**Switching between read-only and invites** later: run `aps-tools setup discourse` again and
+approve the new key. It replaces the old one, so the forum's list of apps doesn't fill up.
 
 ### If the forum won't approve the key
 

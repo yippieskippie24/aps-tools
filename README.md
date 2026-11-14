@@ -28,6 +28,7 @@ go install github.com/yippieskippie24/aps-tools/cmd/aps-tools@latest
 aps-tools                          # open the interactive app
 aps-tools check alex@example.com   # check a member in every system
 aps-tools onboard alex@example.com # plan (and do) a new member's setup
+aps-tools email welcome alex@example.com  # open an email, ready to copy into Mail
 aps-tools log                      # see what the tool has changed
 aps-tools setup                    # connect APS systems (guided)
 aps-tools doctor                   # check that everything is connected
@@ -45,6 +46,7 @@ highlighted member).
 |---|---|
 | Take over as APS Webmaster | [Handover Guide](docs/handover.md) |
 | Connect a system (Jira, 1Password, …) | [Setup guides](docs/setup/README.md) |
+| Set up or edit the member emails | [The welcome email](docs/member-emails.md) |
 | Onboard a member by hand (or understand the process) | [How APS member onboarding works](docs/onboarding-process.md) |
 | Understand what the tool does and why | [Design](docs/design.md) |
 | Change the code | [Architecture](docs/architecture.md) · [Development Guide](docs/development.md) |

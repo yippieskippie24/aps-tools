@@ -47,3 +47,5 @@ What does this make easier or harder?
 | [0011](0011-onboarding-plan-then-run.md) | Onboarding plans first, lists manual steps, and logs to a text file |
 | [0012](0012-webmaster-override.md) | The webmaster can override the vetting gate, with a recorded reason |
 | [0013](0013-members-screen-bulk-checks.md) | The Members screen: bulk checks and an in-memory snapshot |
+| [0014](0014-discourse-invites-write-access.md) | Onboarding creates personal forum invites, with a write-access key |
+| [0015](0015-member-emails-and-page-server.md) | Templates for common member emails, shown by a local page server |

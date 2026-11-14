@@ -47,7 +47,7 @@ func forumLocks(t *testing.T, link, payload string, oaep bool) string {
 }
 
 func TestUserKeyURL(t *testing.T) {
-	req, err := NewUserKeyRequest("client-1")
+	req, err := NewUserKeyRequest("client-1", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestUserKeyURL(t *testing.T) {
 
 func TestUnlock(t *testing.T) {
 	for _, oaep := range []bool{false, true} {
-		req, _ := NewUserKeyRequest("client-1")
+		req, _ := NewUserKeyRequest("client-1", false)
 		link := req.URL("forum.example.org")
 		nonce, _ := url.Parse(link)
 		payload := `{"key":"abc123","nonce":"` + nonce.Query().Get("nonce") + `","push":false,"api":4}`
@@ -86,7 +86,7 @@ func TestUnlock(t *testing.T) {
 }
 
 func TestUnlockRejects(t *testing.T) {
-	req, _ := NewUserKeyRequest("client-1")
+	req, _ := NewUserKeyRequest("client-1", false)
 	link := req.URL("forum.example.org")
 
 	if _, err := req.Unlock("hello"); err == nil {
@@ -98,7 +98,7 @@ func TestUnlockRejects(t *testing.T) {
 		t.Errorf("wrong nonce: err = %v", err)
 	}
 
-	other, _ := NewUserKeyRequest("client-1")
+	other, _ := NewUserKeyRequest("client-1", false)
 	nonce, _ := url.Parse(link)
 	forOther := forumLocks(t, other.URL("forum.example.org"), `{"key":"abc123","nonce":"`+nonce.Query().Get("nonce")+`"}`, false)
 	if _, err := req.Unlock(forOther); err == nil || !strings.Contains(err.Error(), "wasn't made for this approval") {
@@ -124,6 +124,28 @@ func TestExplainStoredKey(t *testing.T) {
 		}
 		if got != "" && strings.Contains(got, key) {
 			t.Errorf("%s: message must never show the key", name)
+		}
+	}
+}
+
+func TestWriteKeyURL(t *testing.T) {
+	req, _ := NewUserKeyRequest("client-1", true)
+	u, _ := url.Parse(req.URL("forum.example.org"))
+	if q := u.Query(); q.Get("scopes") != "read,write" || !strings.Contains(q.Get("application_name"), "creates member invites") {
+		t.Errorf("write key request: %v", q)
+	}
+}
+
+func TestTopicID(t *testing.T) {
+	for link, want := range map[string]int{
+		"https://forum.example.org/t/welcome-to-aps/5":    5,
+		"https://forum.example.org/t/welcome-to-aps/5/12": 5,
+		"https://forum.example.org/t/42":                  42,
+		"https://forum.example.org/tag/getting-started":   0,
+	} {
+		got, ok := TopicID(link)
+		if got != want || ok != (want > 0) {
+			t.Errorf("TopicID(%q) = %d, %v", link, got, ok)
 		}
 	}
 }
