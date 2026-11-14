@@ -13,6 +13,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/yippieskippie24/aps-tools/internal/activity"
+	"github.com/yippieskippie24/aps-tools/internal/check"
 	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/doctor"
@@ -186,36 +187,24 @@ func TestCheckScreenRunsAndShowsReport(t *testing.T) {
 			State: connectors.StateMissing, Summary: "Not a customer.", Fix: "Add them.",
 		}}}
 	}
-	a := New(deps)
+	a := tall(t, New(deps))
 	a, cmd := press(t, a, "2")
-	a = settle(t, a, cmd) // let the member list load (no sheet here, so it can't)
+	a = settle(t, a, cmd) // the member list (there's no sheet here, so it can't load)
 	a = typeText(t, a, "Alex@Example.com")
-	a, cmd = press(t, a, "enter")
-	if !a.member.running || cmd == nil {
-		t.Fatal("enter should start the check")
+	a, _ = press(t, a, "enter")
+	if a.pop == nil || !strings.Contains(a.View().Content, "Check every system") {
+		t.Fatalf("enter on a typed address should open their actions:\n%s", a.View().Content)
 	}
-
-	// Run the background work the way Bubble Tea would, and feed the
-	// finished report back in.
-	var done checkDoneMsg
-	for _, msg := range runBatch(cmd) {
-		if d, ok := msg.(checkDoneMsg); ok {
-			done = d
-		}
+	a, cmd = press(t, a, "4") // Check every system
+	a = settle(t, a, cmd)
+	if _, ok := a.checked["alex@example.com"]; !ok {
+		t.Fatal("the check wasn't stored")
 	}
-	m, _ := a.Update(done)
-	a = m.(App)
-
 	view := a.View().Content
-	for _, want := range []string{"alex@example.com", "Fake Desk", "Not set up", "Add them."} {
+	for _, want := range []string{"Fake Desk", "Not a customer.", "Checked alex@example.com"} {
 		if !strings.Contains(view, want) {
-			t.Errorf("report screen is missing %q", want)
+			t.Errorf("details pane is missing %q:\n%s", want, view)
 		}
-	}
-
-	a, _ = press(t, a, "n")
-	if a.member.report != nil || a.member.input.Value() != "" {
-		t.Error("n should start a fresh check")
 	}
 }
 
@@ -541,41 +530,30 @@ func TestMembersScreen(t *testing.T) {
 	}
 	a = settle(t, a, cmd)
 	view := a.View().Content
-	for _, want := range []string{"Needs setup 1", "Not ready 1", "Everyone 2", "Amy Able", "Mail: Not on the list."} {
+	for _, want := range []string{"Needs setup 1", "Not ready 1", "Everyone 2", "Amy Able", "Not on the list.", "Suggested next step", "Onboard: set up Mailing list"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("members screen is missing %q", want)
 		}
 	}
-	if strings.Contains(view, "Ned New") {
-		t.Error("Ned isn't vetted, so he shouldn't be under Needs setup")
-	}
 
-	// → moves through the groups; Not ready has Ned.
-	for i := 0; i < 3; i++ {
-		a, _ = press(t, a, "right")
+	// enter opens Amy's actions; the suggested one (onboard) plans first.
+	a, _ = press(t, a, "enter")
+	if a.pop == nil || a.pop.title != "Amy Able" {
+		t.Fatalf("enter should open Amy's actions, got %+v", a.pop)
 	}
-	if !strings.Contains(a.View().Content, "Ned New") {
-		t.Errorf("Not ready tab should list Ned:\n%s", a.View().Content)
-	}
-
-	// enter opens onboarding for the highlighted member; esc comes back.
-	a, _ = press(t, a, "left")
-	a, _ = press(t, a, "left")
-	a, _ = press(t, a, "left")
 	a, cmd = press(t, a, "enter")
-	if a.screen != screenOnboard || a.onboard.phase != obPlanning {
-		t.Fatalf("enter should plan Amy's onboarding (screen %v phase %v)", a.screen, a.onboard.phase)
-	}
 	a = settle(t, a, cmd)
-	if a.onboard.plan == nil || a.onboard.plan.Person.Email != "amy@example.com" {
-		t.Fatalf("plan = %+v", a.onboard.plan)
+	if a.pop == nil || !strings.Contains(a.View().Content, "Make 1 change now") || calls != 0 {
+		t.Fatalf("planning should show the plan and change nothing yet (calls %d):\n%s", calls, a.View().Content)
+	}
+	a, cmd = press(t, a, "enter") // Make 1 change now
+	a = settle(t, a, cmd)
+	if calls != 1 || !strings.Contains(a.View().Content, "1 change made") {
+		t.Errorf("onboarding: %d changes, view:\n%s", calls, a.View().Content)
 	}
 	a, _ = press(t, a, "esc")
-	if a.screen != screenMembers {
-		t.Errorf("esc from onboarding should return to Members, got %v", a.screen)
-	}
-	if calls != 0 {
-		t.Error("opening members and plans must not change anything")
+	if a.screen != screenHome {
+		t.Errorf("esc should go home, got %v", a.screen)
 	}
 }
 
@@ -717,25 +695,24 @@ func TestEmailFromMembersScreen(t *testing.T) {
 	a, cmd := press(t, a, "1")
 	a = settle(t, a, cmd)
 
-	// Ned isn't vetted: the suggestion is "Application in progress".
+	// Ned isn't vetted: his email suggestion is "Application in progress".
 	for i := 0; i < 3; i++ {
 		a, _ = press(t, a, "right")
 	}
-	a, _ = press(t, a, "e")
-	if a.screen != screenEmail || a.email.choices[0].ID != welcome.ApplicationInProgress.ID {
-		t.Fatalf("e should open the Email screen with the suggestion first: screen %v, %+v", a.screen, a.email.choices)
+	a, _ = press(t, a, "enter")
+	a, _ = press(t, a, "2") // Email them…
+	if a.pop == nil || a.pop.items[0].label != welcome.ApplicationInProgress.Name || !a.pop.items[0].suggested {
+		t.Fatalf("email list: %+v", a.pop)
 	}
-	view := a.View().Content
-	if !strings.Contains(view, "Application in progress") || !strings.Contains(view, "suggested") || !strings.Contains(view, "Changing your email address") {
-		t.Errorf("picker view:\n%s", view)
+	if !strings.Contains(a.View().Content, "Changing your email address") {
+		t.Error("every email should be offered")
 	}
-
 	a, cmd = press(t, a, "enter")
 	a = settle(t, a, cmd)
-	if len(opened) != 1 || opened[0] != "application-in-progress ned@example.com" || a.email.sending == nil {
-		t.Fatalf("opened %v, sending %v", opened, a.email.sending)
+	if len(opened) != 1 || opened[0] != "application-in-progress ned@example.com" || a.pop == nil {
+		t.Fatalf("opened %v, popup %+v", opened, a.pop)
 	}
-	a, cmd = press(t, a, "y")
+	a, cmd = press(t, a, "enter") // Yes, I sent it
 	a = settle(t, a, cmd)
 	path, _ := deps.ConfigPath()
 	lines, _ := activity.Open(filepath.Join(filepath.Dir(path), activity.FileName)).Recent(5)
@@ -745,9 +722,8 @@ func TestEmailFromMembersScreen(t *testing.T) {
 	if !strings.Contains(a.View().Content, "recorded as sent") {
 		t.Error("no confirmation shown")
 	}
-	a, _ = press(t, a, "esc")
-	if a.screen != screenMembers {
-		t.Errorf("esc should go back to Members, got %v", a.screen)
+	if calls != 0 {
+		t.Error("an email must not change any system")
 	}
 }
 
@@ -859,18 +835,19 @@ func TestCheckScreenListsMembersQuickly(t *testing.T) {
 	a, _ = press(t, a, "tab")
 	a, _ = press(t, a, "tab") // back to Everyone
 
-	// enter checks the highlighted member; esc comes back with the search kept.
-	a, cmd = press(t, a, "enter")
-	if !a.member.running || a.member.who != "Ned New" {
-		t.Fatalf("enter should check Ned (running %v, who %q)", a.member.running, a.member.who)
+	// enter opens the highlighted member's actions; checking them fills in
+	// the details pane, and the search is kept.
+	a, _ = press(t, a, "enter")
+	if a.pop == nil || a.pop.title != "Ned New" {
+		t.Fatalf("enter should open Ned's actions, got %+v", a.pop)
 	}
+	a, cmd = press(t, a, "4") // Check every system
 	a = settle(t, a, cmd)
-	if a.member.report == nil || a.member.report.Email != "ned@example.com" {
-		t.Fatalf("report = %+v", a.member.report)
+	if _, ok := a.checked["ned@example.com"]; !ok || a.member.input.Value() != "ned" {
+		t.Fatalf("check stored %v, search %q", ok, a.member.input.Value())
 	}
-	a, _ = press(t, a, "esc")
-	if a.screen != screenCheck || a.member.report != nil || a.member.input.Value() != "ned" {
-		t.Errorf("esc should return to the list with the search kept (screen %v, search %q)", a.screen, a.member.input.Value())
+	if !strings.Contains(a.View().Content, "Mailing list") {
+		t.Errorf("details pane should show the other systems now:\n%s", a.View().Content)
 	}
 	// The list is kept: reopening the screen doesn't read the sheet again.
 	a, _ = press(t, a, "esc")
@@ -946,7 +923,7 @@ func TestCheckListSorting(t *testing.T) {
 	if got := order(); got != "Mia,Zoe,Amy" {
 		t.Errorf("email: %s", got)
 	}
-	if !strings.Contains(a.View().Content, "Email ▲") {
+	if !strings.Contains(a.View().Content, "by email ▲") {
 		t.Error("the sorted column should be marked")
 	}
 	a, _ = press(t, a, "right")
@@ -958,11 +935,11 @@ func TestCheckListSorting(t *testing.T) {
 		t.Errorf("← should go back to email, got %s", checkSorts[a.peopleSort])
 	}
 
-	// ↓ highlights the next member; enter checks the highlighted one.
+	// ↓ highlights the next member; enter opens the highlighted one.
 	a, _ = press(t, a, "down")
 	a, _ = press(t, a, "enter")
-	if a.member.who != "Zoe Able" {
-		t.Errorf("enter checked %q, want the highlighted Zoe Able", a.member.who)
+	if a.pop == nil || a.pop.title != "Zoe Able" {
+		t.Errorf("enter opened %+v, want the highlighted Zoe Able", a.pop)
 	}
 }
 
@@ -1031,5 +1008,79 @@ func TestPressingWTwiceOpensOneEmail(t *testing.T) {
 	a = settle(t, a, first)
 	if opened != 1 {
 		t.Errorf("opened %d emails, want 1", opened)
+	}
+}
+
+// Overriding the sheet asks for a reason in a popup: a too-short reason is
+// refused, esc steps back to their actions, a pasted reason works, and the
+// override is recorded before their plan opens (nothing changes yet).
+func TestOverridePopupNeedsAReason(t *testing.T) {
+	calls := 0
+	deps := onboardDeps(t, false, &calls)
+	a := tall(t, New(deps))
+	ned := memberView{person: connectors.Person{Email: "ned@example.com", FirstName: "Ned", LastName: "New"},
+		sheet: connectors.MemberStatus{State: connectors.StatePending, Summary: "On the list as New."}}
+	a, _ = a.openPopup(a.actionsPopup(ned))
+	if a.pop.items[0].label != "Override the sheet and onboard…" {
+		t.Fatalf("first action for someone not ready = %q", a.pop.items[0].label)
+	}
+	actions := a.pop
+	a, _ = press(t, a, "1")
+	if a.pop == nil || a.pop.input == nil {
+		t.Fatal("override should ask for a reason")
+	}
+	a = typeText(t, a, "ok")
+	a, _ = press(t, a, "enter")
+	if a.pop.inputErr == "" || !strings.Contains(a.View().Content, "at least a few words") {
+		t.Fatal("a too-short reason should be refused")
+	}
+	a, _ = press(t, a, "esc")
+	if a.pop != actions {
+		t.Fatal("esc should step back to their actions")
+	}
+	a, _ = press(t, a, "1")
+	m, _ := a.Update(tea.PasteMsg{Content: "Paid at the meeting; the chair will update the sheet"})
+	a = m.(App)
+	a, cmd := press(t, a, "enter")
+	a = settle(t, a, cmd)
+	if a.pop == nil || !strings.Contains(a.View().Content, "Make 1 change now") || calls != 0 {
+		t.Fatalf("the plan should open with nothing changed yet (calls %d):\n%s", calls, a.View().Content)
+	}
+	path, _ := deps.ConfigPath()
+	lines, _ := activity.Open(filepath.Join(filepath.Dir(path), activity.FileName)).Recent(5)
+	if len(lines) != 1 || !strings.Contains(lines[0], "Paid at the meeting") {
+		t.Errorf("the override should be logged first: %v", lines)
+	}
+	a, _ = press(t, a, "esc")
+	if a.pop != nil {
+		t.Error("esc on the plan should close it")
+	}
+}
+
+// The re-send action is only offered while Cloudflare is waiting on them,
+// asks first, and reports the result on the bottom line.
+func TestResendPopup(t *testing.T) {
+	resent := 0
+	deps := onboardDeps(t, true, new(int))
+	deps.Connectors = func(*config.Config, secrets.Store) []connectors.Connector {
+		return []connectors.Connector{fakeMail{&resent}}
+	}
+	a := tall(t, New(deps))
+	pat := memberView{person: connectors.Person{Email: "pat@example.com", FirstName: "Pat"},
+		sheet:   connectors.MemberStatus{State: connectors.StateOK},
+		systems: []check.SystemResult{{ID: "cloudflare", System: "Mailing list", MemberStatus: connectors.MemberStatus{State: connectors.StateOK}}}}
+	if it := a.actionsPopup(pat).items[2]; it.off != "already verified" {
+		t.Errorf("re-send for a verified address: off = %q", it.off)
+	}
+	pat.systems[0].State = connectors.StatePending
+	a, _ = a.openPopup(a.actionsPopup(pat))
+	a, _ = press(t, a, "3")
+	if a.pop == nil || !strings.Contains(a.View().Content, "new verification email?") || resent != 0 {
+		t.Fatal("re-send should ask first")
+	}
+	a, cmd := press(t, a, "enter")
+	a = settle(t, a, cmd)
+	if resent != 1 || !strings.Contains(a.View().Content, "Cloudflare is sending") {
+		t.Errorf("resent %d:\n%s", resent, a.View().Content)
 	}
 }

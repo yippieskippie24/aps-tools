@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/yippieskippie24/aps-tools/internal/check"
+	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/roster"
 )
 
@@ -112,11 +113,11 @@ func (a App) membersMsg(msg tea.Msg) App {
 		mv.clamp()
 	case memberRefreshedMsg:
 		if msg.err != nil {
-			mv.notice = "Couldn't re-check them: " + msg.err.Error()
+			a.flash = "Couldn't re-check them: " + msg.err.Error()
 			return a
 		}
 		mv.roster = &msg.roster
-		mv.notice = "Re-checked after onboarding."
+		a.flash = "✓ Re-checked after onboarding."
 		mv.clamp()
 	}
 	return a
@@ -182,17 +183,9 @@ func (a App) updateMembers(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		mv.cursor = 0
 	case "end":
 		mv.cursor = n - 1
-	case "enter", "o":
+	case "enter":
 		if e, ok := mv.selected(); ok {
-			return a.onboardFromMembers(e.Email)
-		}
-	case "c":
-		if e, ok := mv.selected(); ok {
-			return a.checkFromMembers(e)
-		}
-	case "e":
-		if e, ok := mv.selected(); ok {
-			return a.openEmail(e.Person, e.Sheet.State, mv.roster.States(e)), nil
+			return a.openPopup(a.actionsPopup(entryView(e)))
 		}
 	case "?":
 		a.screen = screenHelp
@@ -209,34 +202,22 @@ func (a App) updateMembers(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// onboardFromMembers opens onboarding for a member, planned live, and comes
-// back to this list afterwards.
-func (a App) onboardFromMembers(email string) (tea.Model, tea.Cmd) {
-	a, _ = a.openOnboard()
-	a.back = screenMembers
-	a.onboard.input.SetValue(email)
-	return a.startPlan(email)
-}
-
-// checkFromMembers opens the member check for a member, and comes back to
-// this list afterwards.
-func (a App) checkFromMembers(e roster.Entry) (tea.Model, tea.Cmd) {
-	a.screen, a.member, a.back = screenCheck, newMemberCheck(a.styles), screenMembers
-	who := e.Name()
-	if who == "" {
-		who = e.Email
+// entryView is what the details pane and popup need from a roster entry.
+func entryView(e roster.Entry) memberView {
+	systems := e.Systems
+	if systems == nil {
+		systems = []check.SystemResult{}
 	}
-	return a.startCheckFor(e.Email, who)
+	return memberView{person: e.Person, sheet: e.Sheet, systems: systems}
 }
 
 // membersKeys is the footer for the Members screen.
 func (a App) membersKeys() string {
 	mv := a.members
-	switch {
-	case mv.loading || mv.roster == nil:
+	if mv.loading || mv.roster == nil {
 		return a.keyHelp("r", "check again", "esc", "back")
 	}
-	return a.keyHelp("←/→", "group", "↑/↓", "move", "enter", "onboard", "e", "email", "c", "check", "r", "refresh", "esc", "back")
+	return a.keyHelp("↑/↓", "member", "enter", "what you can do", "←/→", "group", "r", "check everyone again", "esc", "back")
 }
 
 // membersHeader is how many lines come above the list (heading, age line,
@@ -249,9 +230,6 @@ func (a App) memberListHeight() int {
 	extra := 1 // the "rows x–y of n" line under the list
 	if a.members.roster != nil {
 		extra += len(a.members.roster.Problems)
-	}
-	if a.members.notice != "" {
-		extra++
 	}
 	return max(a.cardInnerHeight()-membersHeader-extra, 1)
 }
@@ -279,10 +257,48 @@ func (a App) viewMembers(w int) string {
 	}
 	r := *mv.roster
 
-	b.WriteString(s.subtle.Render(fmt.Sprintf("%d on the sheet · checked %s · ", len(r.Entries), ago(r.CheckedAt)) + "r to refresh"))
+	b.WriteString(s.subtle.Render(fitWidth(fmt.Sprintf("%d on the sheet · checked %s · r to check everyone again", len(r.Entries), ago(r.CheckedAt)), inner)))
 	b.WriteString("\n")
+	b.WriteString(a.viewMemberTabs(r, inner) + "\n")
+	explain := "Everyone on the membership sheet."
+	if g := memberTabs[mv.tab]; g != tabAll {
+		explain = g.Explain()
+	}
+	b.WriteString(s.subtle.Render(fitWidth(explain, inner)) + "\n")
+	for _, p := range r.Problems {
+		b.WriteString(lipgloss.NewStyle().Foreground(s.p.warn).Render(fitWidth("! "+p, inner)) + "\n")
+	}
 
-	// Tabs, with counts (short labels when the window is narrow).
+	// The list on the left, the highlighted member's details on the right.
+	leftW := min(max(inner*2/5, 30), 48)
+	rightW := max(inner-leftW-3, 20)
+	h := a.memberListHeight()
+	rows := mv.rows()
+	var left []string
+	head := lipgloss.NewStyle().Foreground(s.p.subtle).Bold(true)
+	nameW := leftW - 2 - 12
+	left = append(left, "  "+head.Width(nameW).Render("Name")+head.Render("Sh Ma Ji Fo"))
+	if len(rows) == 0 {
+		left = append(left, s.subtle.Render("  Nobody here."))
+	}
+	end := min(mv.top+h, len(rows))
+	for i := mv.top; i < end; i++ {
+		left = append(left, a.memberListRow(rows[i], nameW, i == mv.cursor))
+	}
+	if len(rows) > h {
+		left = append(left, s.subtle.Render(fmt.Sprintf("  %d–%d of %d", mv.top+1, end, len(rows))))
+	}
+	right := ""
+	if e, ok := mv.selected(); ok {
+		right = a.viewMemberDetails(entryView(e), rightW)
+	}
+	b.WriteString(a.splitPanes(strings.Join(left, "\n"), right, leftW, rightW, h+1))
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// viewMemberTabs is the group tabs, with counts (short labels when narrow).
+func (a App) viewMemberTabs(r roster.Roster, inner int) string {
+	s := a.styles
 	labels := make([]string, len(memberTabs))
 	width := 0
 	for i, g := range memberTabs {
@@ -305,128 +321,55 @@ func (a App) viewMembers(w int) string {
 	}
 	var tabs []string
 	for i := range memberTabs {
-		text := labels[i]
-		if i == mv.tab {
-			tabs = append(tabs, lipgloss.NewStyle().Bold(true).Foreground(s.p.text).Background(s.p.selected).Render(text))
+		if i == a.members.tab {
+			tabs = append(tabs, lipgloss.NewStyle().Bold(true).Foreground(s.p.text).Background(s.p.selected).Render(labels[i]))
 		} else {
-			tabs = append(tabs, s.subtle.Render(text))
+			tabs = append(tabs, s.subtle.Render(labels[i]))
 		}
 	}
-	b.WriteString(strings.Join(tabs, " "))
-	b.WriteString("\n")
-	explain := "Everyone on the membership sheet."
-	if g := memberTabs[mv.tab]; g != tabAll {
-		explain = g.Explain()
-	}
-	b.WriteString(s.subtle.Render(fitWidth(explain, inner)))
-	b.WriteString("\n")
-
-	for _, p := range r.Problems {
-		b.WriteString(lipgloss.NewStyle().Foreground(s.p.warn).Render(fitWidth("! "+p, inner)) + "\n")
-	}
-
-	// Columns: name, (email when there's room), one icon per system, then
-	// why they're in this group.
-	cols := memberColumns(inner, r)
-	b.WriteString(a.memberHeaderRow(cols, r) + "\n")
-
-	rows := mv.rows()
-	if len(rows) == 0 {
-		b.WriteString(s.subtle.Render("  Nobody here."))
-	}
-	h := a.memberListHeight()
-	end := min(mv.top+h, len(rows))
-	for i := mv.top; i < end; i++ {
-		b.WriteString(a.memberRow(rows[i], cols, i == mv.cursor) + "\n")
-	}
-	if len(rows) > h {
-		b.WriteString(s.subtle.Render(fmt.Sprintf("  %d–%d of %d", mv.top+1, end, len(rows))) + "\n")
-	}
-	if mv.notice != "" {
-		b.WriteString(s.statusLine.Render(fitWidth(mv.notice, inner)))
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return strings.Join(tabs, " ")
 }
 
-// columns is the member list's layout for the current width.
-type columns struct {
-	name, email, icon, reason int
-	showEmail                 bool
-}
-
-func memberColumns(inner int, r roster.Roster) columns {
-	c := columns{name: 24, email: 32, icon: 6}
-	icons := c.icon * (len(r.Systems) + 1)
-	c.showEmail = inner >= 2+c.name+c.email+icons+20
-	used := 2 + c.name + icons
-	if c.showEmail {
-		used += c.email
-	}
-	c.reason = max(inner-used, 0)
-	return c
-}
-
-func (a App) memberHeaderRow(c columns, r roster.Roster) string {
-	s := a.styles
-	h := lipgloss.NewStyle().Foreground(s.p.subtle).Bold(true)
-	row := "  " + h.Width(c.name).Render("Name")
-	if c.showEmail {
-		row += h.Width(c.email).Render("Email")
-	}
-	for _, name := range append([]string{r.Directory}, r.Systems...) {
-		row += h.Width(c.icon).Render(shortSystemName(name))
-	}
-	if c.reason > 0 {
-		row += h.Render("Why")
-	}
-	return row
-}
-
-func (a App) memberRow(e roster.Entry, c columns, selected bool) string {
+// memberListRow is one member in the list: name, then an icon for the
+// sheet and each system.
+func (a App) memberListRow(e roster.Entry, nameW int, selected bool) string {
 	s := a.styles
 	bg := lipgloss.NewStyle()
+	marker := "  "
 	if selected {
 		bg = bg.Background(s.p.selected)
-	}
-	text := s.text.Inherit(bg)
-	marker := bg.Render("  ")
-	if selected {
-		marker = bg.Foreground(s.p.accent).Bold(true).Render("▸ ")
+		marker = "▸ "
 	}
 	name := e.Name()
 	if name == "" {
 		name = e.Email
 	}
-	row := marker + text.Width(c.name).Render(fitWidth(name, c.name-1))
-	if c.showEmail {
-		row += s.subtle.Inherit(bg).Width(c.email).Render(fitWidth(e.Email, c.email-1))
-	}
-	row += a.stateColor(e.Sheet.State).Inherit(bg).Width(c.icon).Render(check.Icon(e.Sheet.State))
+	row := bg.Foreground(s.p.accent).Bold(true).Render(marker) + s.text.Inherit(bg).Width(nameW).Render(fitWidth(name, nameW-1))
+	icons := []connectors.State{e.Sheet.State}
 	for _, sys := range e.Systems {
-		row += a.stateColor(sys.State).Inherit(bg).Width(c.icon).Render(check.Icon(sys.State))
+		icons = append(icons, sys.State)
 	}
-	if c.reason > 0 {
-		var parts []string
-		if e.Group == roster.NotReady {
-			parts = append(parts, e.Sheet.Summary)
-		}
-		for _, sys := range e.Why() {
-			parts = append(parts, shortSystemName(sys.System)+": "+sys.Summary)
-		}
-		why := fitWidth(strings.Join(parts, " · "), c.reason)
-		if w := e.Warning(); w != "" {
-			// The warning first, in its colour, then the reason.
-			warn := fitWidth("! "+w, c.reason)
-			rest := ""
-			if room := c.reason - lipgloss.Width(warn) - 3; room > 8 && why != "" {
-				rest = s.subtle.Inherit(bg).Render(" · " + fitWidth(why, room))
-			}
-			row += bg.Width(c.reason).Render(lipgloss.NewStyle().Foreground(s.p.warn).Inherit(bg).Render(warn) + rest)
-		} else {
-			row += s.subtle.Inherit(bg).Width(c.reason).Render(why)
-		}
+	for _, st := range icons {
+		row += a.stateColor(st).Inherit(bg).Width(3).Render(check.Icon(st))
+	}
+	if e.Warning() != "" {
+		row += lipgloss.NewStyle().Foreground(s.p.warn).Inherit(bg).Render("!")
 	}
 	return row
+}
+
+// splitPanes puts left and right side by side, h lines tall, with a thin
+// line between them.
+func (a App) splitPanes(left, right string, leftW, rightW, h int) string {
+	clip := func(text string, width int) string {
+		lines := strings.Split(lipgloss.NewStyle().Width(width).Render(text), "\n")
+		if len(lines) > h {
+			lines = lines[:h]
+		}
+		return lipgloss.NewStyle().Width(width).Height(h).Render(strings.Join(lines, "\n"))
+	}
+	sep := lipgloss.NewStyle().Foreground(a.styles.p.faint).Render(strings.TrimRight(strings.Repeat("│\n", h), "\n"))
+	return lipgloss.JoinHorizontal(lipgloss.Top, clip(left, leftW), " "+sep+" ", clip(right, rightW))
 }
 
 // shortSystemName is a system's name for a narrow column heading.

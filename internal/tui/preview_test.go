@@ -129,6 +129,24 @@ func TestWritePreviews(t *testing.T) {
 		m, _ = big.Update(tea.WindowSizeMsg{Width: 130, Height: 30})
 		write("members-wide", membersPreview(m.(App)))
 
+		// The popups, over the wide Members screen.
+		wide := membersPreview(m.(App))
+		mv := entryView(wide.members.roster.Entries[0])
+		actions, _ := wide.openPopup(wide.actionsPopup(mv))
+		write("popup-actions", actions)
+		emails, _ := actions.openPopup(actions.emailsPopup(mv))
+		write("popup-emails", emails)
+		planned, _ := wide.openPopup(wide.planPopup(onboard.Plan{Person: mv.person, Ready: true, Steps: plan.Steps}))
+		write("popup-plan", planned)
+		reasonMV := mv
+		reasonMV.sheet = connectors.MemberStatus{State: connectors.StatePending, Summary: "On the list, but \"App vetted\" isn't marked yet."}
+		reason, _ := wide.openPopup(wide.reasonPopup(reasonMV))
+		reason.pop.input.SetValue("Paid at the meeting; the chair will update the sheet")
+		write("popup-override", reason)
+		flashed := wide
+		flashed.flash = "✓ Onboarded Alex Example: 1 change made. Next: Email them → Welcome email."
+		write("members-flash", flashed)
+
 		em := a
 		em.screen = screenMembers
 		em = em.openEmail(connectors.Person{Email: "jordan.sample@example.com", FirstName: "Jordan", LastName: "Sample"},
@@ -191,9 +209,9 @@ func membersPreview(a App) App {
 	ok := st(connectors.StateOK, "Fine.")
 	sys := func(mail, jira, forum connectors.MemberStatus) []check.SystemResult {
 		return []check.SystemResult{
-			{System: "Mailing list (Cloudflare)", MemberStatus: mail},
-			{System: "Jira Service Management", MemberStatus: jira},
-			{System: "Discourse forum", MemberStatus: forum},
+			{System: "Mailing list (Cloudflare)", ID: "cloudflare", MemberStatus: mail},
+			{System: "Jira Service Management", ID: "jira", MemberStatus: jira},
+			{System: "Discourse forum", ID: "discourse", MemberStatus: forum},
 		}
 	}
 	entry := func(first, last string, g roster.Group, sheet connectors.MemberStatus, systems []check.SystemResult) roster.Entry {

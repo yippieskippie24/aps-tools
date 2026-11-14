@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -94,7 +95,8 @@ func (a App) onProgress(msg progressMsg) (App, tea.Cmd) {
 func finishesTask(msg tea.Msg) bool {
 	switch msg.(type) {
 	case doctorDoneMsg, peopleDoneMsg, checkDoneMsg, rosterDoneMsg, memberRefreshedMsg,
-		planDoneMsg, stepDoneMsg, welcomeOpenedMsg, welcomeSentMsg, emailOpenedMsg, emailSentMsg:
+		planDoneMsg, stepDoneMsg, welcomeOpenedMsg, welcomeSentMsg, emailOpenedMsg, emailSentMsg,
+		popPlanMsg, popRunMsg, popEmailSentMsg, popResendMsg, popCheckedMsg:
 		return true
 	}
 	return false
@@ -130,4 +132,15 @@ func (a App) connect(ctx context.Context) (*config.Config, []connectors.Connecto
 	}
 	progress.Report(ctx, "Reading your API keys (1Password may ask for Touch ID)")
 	return cfg, a.deps.Connectors(cfg, a.deps.Secrets(cfg)), nil
+}
+
+// viewFlash is the bottom line showing the last result, in green for a
+// success (lines starting "✓") and in the warning colour otherwise.
+func (a App) viewFlash() string {
+	s := a.styles
+	style := lipgloss.NewStyle().Foreground(s.p.warn)
+	if strings.HasPrefix(a.flash, "✓") {
+		style = lipgloss.NewStyle().Foreground(s.p.ok)
+	}
+	return "  " + style.Render(fitWidth(a.flash, a.frameWidth()-4))
 }

@@ -38,16 +38,17 @@ next time it's used.
 
 ## Sending one
 
-- **In the app:** press **e** wherever a member is open: highlighted on **Members**, in their
-  **onboarding**, or in their **check**. The **Email a member** screen lists every email, with the
-  one that best fits them first and marked **suggested**:
+- **In the app:** highlight a member on **Members** or **Check a member**, press **Enter**, and
+  choose **Email them…**. (On **Onboard a new member**, press **e**.) A popup lists every email,
+  with the one that best fits them first and marked **suggested**:
   - not vetted yet → Application in progress;
   - not on the list or forum → Welcome email;
   - on the list but no forum account → New forum invite;
   - hasn't verified → Verify your email;
   - has a forum account → Forum access help.
 
-  Pick one and press **Enter**. **Esc** takes you back to where you were.
+  Pick one and press **Enter**. Once it has opened in your browser, a popup asks whether you sent
+  it: **Yes, I sent it** records it in the activity log. **Esc** takes you back a step.
 - **In the app, while onboarding:** **w** is a shortcut for the welcome email.
 - **From the command line:** `aps-tools email <which> alex@example.com`, e.g.
   `aps-tools email forum-access alex@example.com`.

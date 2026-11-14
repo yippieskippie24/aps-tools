@@ -54,12 +54,17 @@ Inside the app: arrow keys to move (`j`/`k` too, except where you're typing), `E
 fills your Terminal window and scrolls long screens. Whenever it's working, the bottom line says
 what it's doing and which step it's on. Nothing changes in any system unless you confirm it, and
 every change goes in the activity log. Start with **1 Members**: everyone on
-the membership sheet, grouped by what they still need (←/→ switches group, `Enter` onboards the
-highlighted member, `e` emails them). To look up just one person, use **2 Check a member**: it
-lists everyone on the sheet straight away (only the sheet is read), sorted by name (←/→ sorts by
-last name or email). Type part of a name to narrow it, ↑/↓ to highlight someone, and Enter to
-check them. **3 Onboard a new member** plans and does a member's setup (`g` to go, `w` for their
-welcome email). **4 Activity log** shows every change the tool has made.
+the membership sheet, grouped by what they still need (←/→ switches group). The list is on the
+left and the highlighted member's details are on the right, with the suggested next step. Press
+**Enter** on anyone for a popup of everything you can do for them: onboard them (or override the
+sheet, with a reason), email them, re-send Cloudflare's verification email, check every system, or
+see their activity. Confirmations and choices appear in popups too, and the result shows on the
+bottom line. To look up just one person, use **2 Check a member**: it lists everyone on the sheet
+straight away (only the sheet is read), sorted by name (←/→ sorts by last name or email). Type
+part of a name to narrow it, ↑/↓ to highlight someone, and Enter for the same popup. You can also
+type someone's full email address to act on a person who isn't on the sheet. **3 Onboard a new
+member** plans and does a member's setup step by step. **4 Activity log** shows every change the
+tool has made.
 
 ## Documentation
 

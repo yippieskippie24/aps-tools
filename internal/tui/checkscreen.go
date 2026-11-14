@@ -11,7 +11,6 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/yippieskippie24/aps-tools/internal/check"
-	"github.com/yippieskippie24/aps-tools/internal/clipboard"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/roster"
 )
@@ -209,41 +208,13 @@ func (a App) checkListHeight() int {
 func (a App) updateCheck(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	mc := &a.member
 	key := msg.String()
-	if mc.running {
-		if key == "esc" {
-			a.screen = a.back // the check finishes quietly in the background
-		}
-		return a, nil
-	}
 
-	// Looking at a report.
+	// An older full-screen report (e.g. from a typed address before this
+	// screen had a details pane): esc returns to the list.
 	if mc.report != nil {
-		switch key {
-		case "esc", "q":
-			if a.back == screenMembers {
-				a.screen = a.back
-				return a, nil
-			}
-			mc.report, mc.notice = nil, "" // back to the list, search kept
-			return a, mc.input.Focus()
-		case "n", "/":
+		if key == "esc" || key == "q" {
 			mc.report, mc.notice = nil, ""
-			mc.input.SetValue("")
-			mc.cursor, mc.top = 0, 0
 			return a, mc.input.Focus()
-		case "r":
-			return a.startCheckFor(mc.report.Email, mc.who)
-		case "e":
-			sheet := connectors.StateOK
-			if st, ok := mc.report.States()["sheet"]; ok {
-				sheet = st
-			}
-			return a.openEmail(connectors.Person{Email: mc.report.Email}, sheet, mc.report.States()), nil
-		case "c":
-			text := mc.report.PlainText()
-			return a, func() tea.Msg { return copiedMsg{err: clipboard.Copy(text)} }
-		case "?":
-			a.screen = screenHelp
 		}
 		return a, nil
 	}
@@ -261,15 +232,11 @@ func (a App) updateCheck(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.screen = a.back
 		return a, nil
 	case "enter":
-		if mc.cursor < len(rows) {
-			e := rows[mc.cursor]
-			who := e.Person.Name()
-			if who == "" {
-				who = e.Person.Email
-			}
-			return a.startCheckFor(e.Person.Email, who)
+		if mv, ok := a.checkSelection(); ok {
+			return a.openPopup(a.actionsPopup(mv))
 		}
-		return a.startCheck(strings.TrimSpace(mc.input.Value()))
+		mc.err = "No one on the sheet matches that. To act on someone who isn't on it, type their full email address."
+		return a, nil
 	case "tab":
 		mc.tab, mc.cursor, mc.top = (mc.tab+1)%len(checkTabs), 0, 0
 		return a, nil
@@ -312,16 +279,43 @@ func (a App) updateCheck(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// checkKeys is the footer for the check screen in its current phase.
-func (a App) checkKeys() string {
-	switch {
-	case a.member.running:
-		return a.keyHelp("esc", "back")
-	case a.member.report == nil:
-		return a.keyHelp("↑/↓", "highlight", "enter", "check", "type", "search", "←/→", "sort", "tab", "group", "ctrl+r", "reload list", "esc", "back")
-	default:
-		return a.keyHelp("e", "email them", "n", "new check", "r", "re-check", "c", "copy report", "esc", "back")
+// checkSelection is the member the details pane shows and Enter acts on:
+// the highlighted row, or (when nobody on the sheet matches) the full
+// email address typed in the search box.
+func (a App) checkSelection() (memberView, bool) {
+	rows := a.checkRows()
+	if a.member.cursor < len(rows) {
+		e := rows[a.member.cursor]
+		mv := memberView{person: e.Person, sheet: e.Status}
+		if rep, ok := a.checked[e.Person.Email]; ok {
+			if sheet, ok := sheetResult(rep); ok {
+				mv.sheet = sheet
+			}
+			mv.systems = otherResults(rep)
+		}
+		return mv, true
 	}
+	email, err := check.NormalizeEmail(a.member.input.Value())
+	if err != nil {
+		return memberView{}, false
+	}
+	mv := memberView{person: connectors.Person{Email: email},
+		sheet: connectors.MemberStatus{State: connectors.StateMissing, Summary: "Not on the membership list."}}
+	if rep, ok := a.checked[email]; ok {
+		if sheet, ok := sheetResult(rep); ok {
+			mv.sheet = sheet
+		}
+		mv.systems = otherResults(rep)
+	}
+	return mv, true
+}
+
+// checkKeys is the footer for the check screen.
+func (a App) checkKeys() string {
+	if a.member.report != nil {
+		return a.keyHelp("esc", "back to the list")
+	}
+	return a.keyHelp("↑/↓", "member", "enter", "what you can do", "type", "search", "tab", "group", "←/→", "sort", "esc", "back")
 }
 
 func (a App) viewCheck(w int) string {
@@ -332,23 +326,15 @@ func (a App) viewCheck(w int) string {
 	var b strings.Builder
 	b.WriteString(s.heading.Render("Check a member"))
 	b.WriteString("\n")
-
-	switch {
-	case mc.running:
-		spinner := lipgloss.NewStyle().Foreground(s.p.accent).Render(spinnerFrames[a.spin])
-		b.WriteString(spinner + " " + s.subtle.Render("Checking "+mc.who+" in every system… (read-only)"))
-	case mc.report != nil:
+	if mc.report != nil {
 		b.WriteString(a.viewReport(*mc.report, inner))
-		if mc.notice != "" {
-			b.WriteString("\n\n" + s.statusLine.Render(mc.notice))
-		}
-	default:
-		b.WriteString(a.viewPeople(inner))
+		return b.String()
 	}
+	b.WriteString(a.viewPeople(inner))
 	return b.String()
 }
 
-// viewPeople draws the search box and the member list.
+// viewPeople draws the search box, the member list and the details pane.
 func (a App) viewPeople(inner int) string {
 	s := a.styles
 	mc := a.member
@@ -363,7 +349,10 @@ func (a App) viewPeople(inner int) string {
 		return b.String()
 	case a.people.err != "":
 		b.WriteString(lipgloss.NewStyle().Foreground(s.p.fail).Width(inner).Render(a.people.err) + "\n")
-		b.WriteString(s.subtle.Width(inner).Render("You can still type a full email address and press enter to check it. ctrl+r tries the list again."))
+		b.WriteString(s.subtle.Width(inner).Render("You can still type a full email address and press enter. ctrl+r tries the list again."))
+		if mv, ok := a.checkSelection(); ok {
+			b.WriteString("\n\n" + a.viewMemberDetails(mv, inner))
+		}
 		if mc.err != "" {
 			b.WriteString("\n" + lipgloss.NewStyle().Foreground(s.p.fail).Width(inner).Render(mc.err))
 		}
@@ -387,38 +376,29 @@ func (a App) viewPeople(inner int) string {
 	b.WriteString(s.subtle.Render(fitWidth(fmt.Sprintf("Sorted by %s (←/→ to change) · from the sheet, read %s (ctrl+r to reload)",
 		strings.ToLower(checkSorts[a.peopleSort]), ago(a.people.at)), inner)) + "\n")
 
+	leftW := min(max(inner*2/5, 30), 48)
+	rightW := max(inner-leftW-3, 20)
+	h := a.checkListHeight()
 	rows := a.checkRows()
-	nameW, emailW := 26, 34
-	showEmail := inner >= 2+nameW+emailW+20 || checkSorts[a.peopleSort] == "Email"
-	if showEmail && inner < 2+nameW+emailW+20 {
-		nameW, emailW = 20, 28 // sorted by email: make room for it
-	}
-	statusW := inner - 2 - nameW
-	if showEmail {
-		statusW -= emailW
-	}
-
-	// Column headings; the sorted column is marked ▲.
 	head := lipgloss.NewStyle().Foreground(s.p.subtle).Bold(true)
-	sorted := lipgloss.NewStyle().Foreground(s.p.accent).Bold(true)
-	nameHead, emailHead := head.Width(nameW).Render("Name"), head.Width(emailW).Render("Email")
+	sortedHead := lipgloss.NewStyle().Foreground(s.p.accent).Bold(true)
+	nameHead := head.Render("Name")
 	switch checkSorts[a.peopleSort] {
 	case "Name":
-		nameHead = sorted.Width(nameW).Render("Name ▲")
+		nameHead = sortedHead.Render("Name ▲")
 	case "Last name":
-		nameHead = sorted.Width(nameW).Render("Name (by last name) ▲")
+		nameHead = sortedHead.Render("Name (by last name) ▲")
 	case "Email":
-		emailHead = sorted.Width(emailW).Render("Email ▲")
+		nameHead = head.Render("Name") + "  " + sortedHead.Render("(by email ▲)")
 	}
-	headRow := "  " + nameHead
-	if showEmail {
-		headRow += emailHead
-	}
-	b.WriteString(headRow + head.Render("Membership sheet") + "\n")
+	left := []string{"  " + nameHead}
 	if len(rows) == 0 {
-		b.WriteString(s.subtle.Render("  No one on the sheet matches. To check someone who isn't on it, type their full email address and press enter."))
+		hint := "No one on the sheet matches."
+		if _, err := check.NormalizeEmail(mc.input.Value()); err == nil {
+			hint = "Not on the sheet: enter acts on the address you typed."
+		}
+		left = append(left, s.subtle.Width(leftW).Render("  "+hint))
 	}
-	h := a.checkListHeight()
 	end := min(mc.top+h, len(rows))
 	for i := mc.top; i < end; i++ {
 		e := rows[i]
@@ -426,27 +406,26 @@ func (a App) viewPeople(inner int) string {
 		marker := "  "
 		if i == mc.cursor {
 			bg = bg.Background(s.p.selected)
-			marker = bg.Foreground(s.p.accent).Bold(true).Render("▸ ")
-		} else {
-			marker = bg.Render(marker)
+			marker = "▸ "
 		}
-		name := e.Person.Name()
-		if name == "" {
-			name = "(no name)"
+		label := e.Person.Name()
+		if checkSorts[a.peopleSort] == "Email" || label == "" {
+			label = e.Person.Email
 		}
-		row := marker + s.text.Inherit(bg).Width(nameW).Render(fitWidth(name, nameW-1))
-		if showEmail {
-			row += s.subtle.Inherit(bg).Width(emailW).Render(fitWidth(e.Person.Email, emailW-1))
-		}
-		status := check.Icon(e.Status.State) + " " + e.Status.Summary
-		row += a.stateColor(e.Status.State).UnsetBold().Inherit(bg).Width(max(statusW, 0)).Render(fitWidth(status, max(statusW, 0)))
-		b.WriteString(row + "\n")
+		left = append(left, bg.Foreground(s.p.accent).Bold(true).Render(marker)+
+			s.text.Inherit(bg).Width(leftW-5).Render(fitWidth(label, leftW-6))+
+			a.stateColor(e.Status.State).Inherit(bg).Width(3).Render(check.Icon(e.Status.State)))
 	}
 	if len(rows) > h {
-		b.WriteString(s.subtle.Render(fmt.Sprintf("  %d–%d of %d", mc.top+1, end, len(rows))) + "\n")
+		left = append(left, s.subtle.Render(fmt.Sprintf("  %d–%d of %d", mc.top+1, end, len(rows))))
 	}
+	right := ""
+	if mv, ok := a.checkSelection(); ok {
+		right = a.viewMemberDetails(mv, rightW)
+	}
+	b.WriteString(a.splitPanes(strings.Join(left, "\n"), right, leftW, rightW, h+1))
 	if mc.err != "" {
-		b.WriteString(lipgloss.NewStyle().Foreground(s.p.fail).Width(inner).Render(mc.err))
+		b.WriteString("\n" + lipgloss.NewStyle().Foreground(s.p.fail).Width(inner).Render(mc.err))
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

@@ -17,6 +17,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/yippieskippie24/aps-tools/internal/check"
 	"github.com/yippieskippie24/aps-tools/internal/doctor"
 	"github.com/yippieskippie24/aps-tools/internal/version"
 )
@@ -81,6 +82,20 @@ type App struct {
 	// (see task.go).
 	task task
 
+	// pop is the popup showing over the screen, if any (see popup.go).
+	pop *popup
+
+	// flash is a one-line result ("✓ Onboarded Robin Example") shown along
+	// the bottom until the next key press.
+	flash string
+	// popFrom is the popup whose choice is running right now (see runChoice
+	// in popup.go); it's only set for that moment.
+	popFrom *popup
+
+	// checked keeps full check results from Check a member, by email, so
+	// the details pane can show every system (see checkscreen.go).
+	checked map[string]check.Report
+
 	// back is where esc returns to from Check and Onboard: the home menu,
 	// or the Members list when a member was opened from there.
 	back screen
@@ -138,11 +153,17 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if p, ok := msg.(progressMsg); ok {
 		return a.onProgress(p)
 	}
+	// A finished result ends its task before it's handled, so the handler
+	// can start a follow-up task (e.g. re-checking someone after
+	// onboarding them). The onboarding screen's step-by-step run is the
+	// exception: each step's result starts the next step in the same task.
+	_, isStep := msg.(stepDoneMsg)
+	if finishesTask(msg) && !isStep {
+		a.finish()
+	}
 	m, cmd := a.update(msg)
 	a = m.(App)
-	// A finished result ends its task, except while onboarding still has
-	// steps to run (each step's result starts the next).
-	if finishesTask(msg) && !(a.onboard.phase == obRunning) {
+	if isStep && a.onboard.phase != obRunning {
 		a.finish()
 	}
 	if a.screen != before {
@@ -194,8 +215,17 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
-	case emailOpenedMsg, emailSentMsg:
+	case emailOpenedMsg:
+		if msg.viaPopup {
+			return a.memberMsg(msg)
+		}
 		return a.emailMsg(msg), nil
+
+	case emailSentMsg:
+		return a.emailMsg(msg), nil
+
+	case popPlanMsg, popRunMsg, popEmailSentMsg, popResendMsg, popCheckedMsg:
+		return a.memberMsg(msg)
 
 	case peopleDoneMsg:
 		return a.peopleMsg(msg), nil
@@ -214,12 +244,21 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 
 	case tea.PasteMsg:
+		if a.pop != nil && a.pop.input != nil {
+			var cmd tea.Cmd
+			*a.pop.input, cmd = a.pop.input.Update(msg)
+			return a, cmd
+		}
 		return a.paste(msg)
 
 	case tea.KeyPressMsg:
 		// ctrl+c always quits, from anywhere.
 		if msg.String() == "ctrl+c" {
 			return a, tea.Quit
+		}
+		a.flash = "" // a result stays up until the next key press
+		if a.pop != nil {
+			return a.updatePopup(msg)
 		}
 		if scrolled, ok := a.scrollKey(msg); ok {
 			return scrolled, nil
@@ -330,8 +369,11 @@ func (a App) updateHelp(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (a App) View() tea.View {
 	w := a.frameWidth()
 	body, keys := a.screenContent(w)
-	if a.task.active {
+	switch {
+	case a.task.active:
 		keys = a.viewTask() // always show that something is happening
+	case a.flash != "":
+		keys = a.viewFlash()
 	}
 
 	page := lipgloss.JoinVertical(lipgloss.Left,
@@ -340,7 +382,7 @@ func (a App) View() tea.View {
 		keys,
 	)
 
-	v := tea.NewView(lipgloss.NewStyle().PaddingLeft(1).Render(page))
+	v := tea.NewView(a.overlay(lipgloss.NewStyle().PaddingLeft(1).Render(page)))
 	v.AltScreen = true // full-window app; your terminal is restored on exit
 	v.WindowTitle = "APS Webmaster"
 	return v

@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -331,6 +332,32 @@ func sheetReady(l lister) error {
 		return fmt.Errorf("%w. Still needed: %s", ErrNoSheet, connectors.JoinPlain(missing))
 	}
 	return nil
+}
+
+// Apply updates a member's entry from a fresh check of every system (as
+// check.Run returns it, including the membership sheet), e.g. after
+// onboarding them, and puts them in the right group. Results for systems
+// the roster doesn't list are taken as the sheet's.
+func (r *Roster) Apply(rep check.Report) {
+	for i := range r.Entries {
+		e := &r.Entries[i]
+		if !strings.EqualFold(e.Email, rep.Email) {
+			continue
+		}
+		byID := map[string]check.SystemResult{}
+		for _, res := range rep.Results {
+			byID[res.ID] = res
+			if !slices.Contains(r.SystemIDs, res.ID) {
+				e.Sheet = res.MemberStatus
+			}
+		}
+		for j, id := range r.SystemIDs {
+			if res, ok := byID[id]; ok && j < len(e.Systems) {
+				e.Systems[j] = res
+			}
+		}
+		e.Group = groupOf(*e)
+	}
 }
 
 // lister is the membership sheet as the roster uses it.
