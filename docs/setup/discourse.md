@@ -104,8 +104,10 @@ waiting. It ends with **"What this means"** for onboarding. No member names or e
 **Limitation:** Discourse only shows the tool the invites **you** sent (the key acts as you). If
 another admin invited someone, the check won't see that invite.
 
-**Privacy:** the tool finds members by filtering on their email. It never asks Discourse to
-*display* email addresses, so checks don't clutter the forum's staff action log.
+**Privacy:** checking one member filters by their email, so it adds nothing to the forum's staff
+action log. The app's **Members** screen checks everyone at once. To do that it reads the user
+list *with* email addresses, which adds one "show emails" entry to the staff action log each time
+it loads or refreshes ([decision 0013](../decisions/0013-members-screen-bulk-checks.md)).
 
 ## What's stored where
 

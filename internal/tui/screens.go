@@ -31,10 +31,8 @@ func (a App) viewDoctor(w int) string {
 
 	if a.checking {
 		spinner := lipgloss.NewStyle().Foreground(s.p.accent).Render(spinnerFrames[a.spin])
-		return s.card.Width(w).Render(
-			s.heading.Render("Test connections") + "\n" +
-				spinner + " " + s.subtle.Render("Checking your setup…"),
-		)
+		return s.heading.Render("Test connections") + "\n" +
+			spinner + " " + s.subtle.Render("Checking your setup…")
 	}
 
 	// Line up the details in a column after the longest check name.
@@ -56,7 +54,7 @@ func (a App) viewDoctor(w int) string {
 		)
 		rows = append(rows, line)
 		if r.Fix != "" {
-			fix := s.fixArrow.Render("→ ") + s.text.Width(detailWidth-2).Render(r.Fix)
+			fix := lipgloss.JoinHorizontal(lipgloss.Top, s.fixArrow.Render("→ "), s.text.Width(detailWidth-2).Render(r.Fix))
 			rows = append(rows, lipgloss.NewStyle().PaddingLeft(2+nameWidth+2).Render(fix))
 		}
 	}
@@ -70,10 +68,8 @@ func (a App) viewDoctor(w int) string {
 	}
 	summary := lipgloss.NewStyle().Foreground(summaryColor).Bold(true).Render(summaryText)
 
-	return s.card.Width(w).Render(
-		s.heading.Render("Test connections") + "\n" +
-			strings.Join(rows, "\n") + "\n\n" + summary,
-	)
+	return s.heading.Render("Test connections") + "\n" +
+		strings.Join(rows, "\n") + "\n\n" + summary
 }
 
 // ---- Help screen ----
@@ -94,7 +90,7 @@ func (a App) viewHelp(w int) string {
 		section("Moving around"),
 		key(12, "↑ ↓  j k", "Move up and down"),
 		key(12, "enter", "Choose the highlighted item"),
-		key(12, "1 – 5", "Jump straight to a menu item"),
+		key(12, "1 – 6", "Jump straight to a menu item"),
 		key(12, "esc  q", "Go back (or quit from the home screen)"),
 		key(12, "ctrl+c", "Quit from anywhere"),
 		"",
@@ -115,5 +111,5 @@ func (a App) viewHelp(w int) string {
 		key(19, "aps-tools --help", "List every command"),
 	}, "\n")
 
-	return s.card.Width(w).Render(body)
+	return body
 }

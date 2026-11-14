@@ -17,6 +17,10 @@ From the app (**2 Onboard a new member**) or the command line (`aps-tools onboar
 1. **Gate: the membership sheet.** The tool finds them on the sheet.
    - If **App vetted** isn't **Y**, it stops: "Not vetted yet, so wait for the membership chair."
    - If they're vetted, it reads their name from the sheet, so you don't retype it.
+   - **Override:** if you know they should be set up anyway, `--override "reason"` (or **o** in
+     the app) goes ahead. A reason is required, and it's recorded
+     ([decision 0012](../decisions/0012-webmaster-override.md)).
+   - A member whose Member Status isn't Active is **flagged with a warning**, not stopped.
 2. **Plan.** It checks every system (exactly what `aps-tools check` does today) and lists what it
    *would* do, skipping anything already done:
    ```
@@ -110,7 +114,12 @@ edited), plus updates to the setup guides and [onboarding-process.md](../onboard
      checked.
    - **One status column on the member directory tab** (e.g. "Webmaster status"), so the board sees
      at a glance where each member stands. Wording to decide later: something like *Not started*,
-     *Pending (waiting on member)*, *Complete*, *Needs attention*.
+     *Pending (waiting on member)*, *Complete*, *Needs attention*. A member onboarded with an
+     **override** gets a status that says so (e.g. *Complete (override)*).
+   - **An "Override reason" column** records why, for every override (webmaster's request,
+     2026-11-13). Recommendation: put it on the details tab, so the tool still writes only one
+     column on the member directory, and the status link leads straight to it. To confirm when
+     this step is built.
    - **Each status is a link** to that member's row on the details tab. Google Sheets supports
      links within a sheet, in the form `=HYPERLINK("#gid=<tab id>&range=A<row>", "Complete")`, so
      clicking "Pending" jumps to the details.

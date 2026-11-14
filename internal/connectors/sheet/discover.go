@@ -90,7 +90,7 @@ func summarize(d *Discovery, rows [][]string) {
 		switch {
 		case m.Active():
 			d.Active++
-		case strings.EqualFold(m.Status, "inactive"):
+		case m.Inactive():
 			d.Inactive++
 		default:
 			d.OtherStatus++

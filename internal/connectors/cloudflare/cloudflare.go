@@ -81,22 +81,38 @@ func (c *Connector) TestConnection(ctx context.Context) error {
 
 // CheckMember implements connectors.Connector. Read-only.
 func (c *Connector) CheckMember(ctx context.Context, email string) (connectors.MemberStatus, error) {
+	all, err := c.CheckMembers(ctx, []string{email})
+	return all[email], err
+}
+
+// CheckMembers implements connectors.BulkChecker. Cloudflare's address list
+// and mailing lists are read once, whatever the number of members, so this
+// is what CheckMember uses too. Read-only.
+func (c *Connector) CheckMembers(ctx context.Context, emails []string) (map[string]connectors.MemberStatus, error) {
 	addrs, err := c.client.ListAddresses(ctx, c.cfg.AccountID)
 	if err != nil {
-		return connectors.MemberStatus{}, err
+		return nil, err
 	}
 	lists, err := c.client.LoadLists(ctx, c.cfg.AccountID, c.cfg.ZoneID)
 	if err != nil {
-		return connectors.MemberStatus{}, errors.New("couldn't read the mailing lists: " + err.Error())
+		return nil, errors.New("couldn't read the mailing lists: " + err.Error())
 	}
-	st := memberStatus(addrs, lists, c.cfg.MembersListName(), email, time.Now())
-
 	// Before the switch-over, Email Routing is off and nothing is forwarded.
 	// Say so, so a ✓ isn't mistaken for "they're receiving list mail".
+	note := ""
 	if routing, err := c.client.GetRoutingSettings(ctx, c.cfg.ZoneID); err == nil && !routing.Enabled {
-		st.Details = append(st.Details, "Note: Email Routing is switched off for "+c.domain()+", so Cloudflare isn't forwarding any mail yet.")
+		note = "Note: Email Routing is switched off for " + c.domain() + ", so Cloudflare isn't forwarding any mail yet."
 	}
-	return st, nil
+	out := make(map[string]connectors.MemberStatus, len(emails))
+	now := time.Now()
+	for _, email := range emails {
+		st := memberStatus(addrs, lists, c.cfg.MembersListName(), email, now)
+		if note != "" {
+			st.Details = append(st.Details, note)
+		}
+		out[email] = st
+	}
+	return out, nil
 }
 
 // destination is what Cloudflare knows about one address.

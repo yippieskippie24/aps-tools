@@ -33,8 +33,8 @@ func fakeForumURL(t *testing.T, routes map[string]string) string {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		if strings.Contains(r.URL.RawQuery, "show_emails") {
-			t.Error("must not ask Discourse to show emails (it fills the staff action log)")
+		if strings.Contains(r.URL.RawQuery, "show_emails") && r.URL.Path != "/admin/users/list/all.json" {
+			t.Error("must not ask Discourse to show emails except in the bulk list (it fills the staff action log)")
 		}
 		body, ok := routes[r.URL.Path+"?"+r.URL.RawQuery]
 		if !ok {
@@ -229,5 +229,40 @@ func TestUserKeyNotAdmin(t *testing.T) {
 	c.baseURL = url
 	if _, err := c.Me(context.Background()); err == nil || !strings.Contains(err.Error(), "@someone isn't a forum admin") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestCheckMembersInBulk(t *testing.T) {
+	url := fakeForumURL(t, map[string]string{
+		"/admin/users/list/all.json?page=1&show_emails=true": `[
+			{"id":1,"username":"alex","email":"alex@example.com","active":true},
+			{"id":2,"username":"sam","email":"sam@example.com","secondary_emails":["Sam.Two@example.com"],"active":false},
+			{"id":3,"username":"pat","email":"pat@example.com","active":true,"suspend_reason":"spam"}]`,
+		"/admin/users/list/all.json?page=2&show_emails=true": `[]`,
+		"/admin/users/3.json":                                `{"id":3,"username":"pat","active":true,"suspended_till":"2099-01-01T00:00:00Z"}`,
+		"/u/webmaster/invited.json?filter=pending":           `{"invites":[{"email":"nora@example.com","created_at":"2026-11-01T00:00:00Z","expires_at":"2099-01-01T00:00:00Z"}]}`,
+		"/u/webmaster/invited.json?filter=pending&offset=1":  `{"invites":[{"email":"nora@example.com","created_at":"2026-11-01T00:00:00Z","expires_at":"2099-01-01T00:00:00Z"}]}`,
+		"/u/webmaster/invited.json?filter=expired":           `{"invites":[]}`,
+	})
+	store := secrets.NewMemory()
+	_ = store.Set(secrets.DiscourseAPIKey, "test-key")
+	c := New(config.Discourse{URL: "forum.example.org", Username: "webmaster", KeyType: config.DiscourseUserKey, ClientID: "client-1"}, store)
+	c.client.baseURL = url
+
+	got, err := c.CheckMembers(context.Background(), []string{"alex@example.com", "sam.two@example.com", "pat@example.com", "nora@example.com", "nobody@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]connectors.State{
+		"alex@example.com":    connectors.StateOK,
+		"sam.two@example.com": connectors.StatePending, // found by a secondary email; not confirmed yet
+		"pat@example.com":     connectors.StateProblem, // suspended, from the full record
+		"nora@example.com":    connectors.StatePending, // invited
+		"nobody@example.com":  connectors.StateMissing,
+	}
+	for email, state := range want {
+		if got[email].State != state {
+			t.Errorf("%s: got %v %q, want %v", email, got[email].State, got[email].Summary, state)
+		}
 	}
 }

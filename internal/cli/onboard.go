@@ -24,6 +24,7 @@ import (
 // vetted member up. The work is done by internal/onboard.
 func newOnboardCmd() *cobra.Command {
 	var dryRun bool
+	var override string
 	cmd := &cobra.Command{
 		Use:   "onboard <email>",
 		Short: "Set a newly vetted member up in every APS system",
@@ -33,13 +34,24 @@ already done, what the tool will do, and what to do by hand.
 
 Nothing changes until you say Go. With --dry-run it shows the plan and
 stops, always. Every change is recorded in the activity log
-(aps-tools log). Running it again later only does what's still missing.`,
-		Example: "  aps-tools onboard alex@example.com --dry-run\n  aps-tools onboard alex@example.com",
+(aps-tools log). Running it again later only does what's still missing.
+
+If the sheet isn't right yet (not vetted, or not on it) but you know the
+member should be set up, add --override with your reason. You're asked
+to confirm, and the override and reason are recorded in the activity
+log. Ask the membership chair to update the sheet too.`,
+		Example: "  aps-tools onboard alex@example.com --dry-run\n  aps-tools onboard alex@example.com\n  aps-tools onboard alex@example.com --override \"Paid at the meeting; chair will update the sheet\"",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 			if _, err := check.NormalizeEmail(args[0]); err != nil {
 				return err
+			}
+			overriding := cmd.Flags().Changed("override")
+			if overriding {
+				if err := onboard.CheckReason(override); err != nil {
+					return err
+				}
 			}
 			cfg, err := config.LoadOrEmpty()
 			if err != nil {
@@ -47,17 +59,57 @@ stops, always. Every change is recorded in the activity log
 			}
 			conns := connectors.All(cfg, secrets.ForConfig(cfg))
 			lipgloss.Fprintln(out, dimStyle.Render("Checking every system… (read-only)"))
-			plan, err := onboard.Prepare(cmd.Context(), conns, args[0])
+			var plan onboard.Plan
+			if overriding {
+				plan, err = onboard.PrepareOverride(cmd.Context(), conns, args[0], override)
+			} else {
+				plan, err = onboard.Prepare(cmd.Context(), conns, args[0])
+			}
 			if err != nil {
 				return err
 			}
 			printPlan(out, plan)
 			if !plan.Ready {
+				if plan.CanOverride() {
+					lipgloss.Fprintln(out, dimStyle.Render("If you know they should be set up anyway, re-run with --override \"your reason\"."))
+				}
 				return errSilent
 			}
+			if overriding && plan.Override == "" {
+				lipgloss.Fprintln(out, dimStyle.Render("No override needed: the sheet already passes them."))
+			}
 			if dryRun {
-				lipgloss.Fprintln(out, dimStyle.Render("Dry run: nothing was changed."))
+				lipgloss.Fprintln(out, dimStyle.Render("Dry run: nothing was changed, and the override wasn't recorded."))
 				return nil
+			}
+			log, err := activity.Default()
+			if err != nil {
+				return err
+			}
+
+			// An override is its own decision: confirm and record it first.
+			if plan.Override != "" {
+				if !term.IsTerminal(os.Stdin.Fd()) {
+					return errors.New("an override has to be confirmed, so run it in a Terminal window")
+				}
+				ok := false
+				confirm := huh.NewForm(huh.NewGroup(huh.NewConfirm().
+					Title("Override the membership sheet for " + plan.Who() + "?").
+					Description("The sheet says: " + plan.Gate.Summary + "\nYour reason: " + plan.Override + "\nThis is recorded in the activity log.").
+					Affirmative("Override").
+					Negative("Cancel").
+					Value(&ok))).WithTheme(formTheme)
+				if err := confirm.RunWithContext(cmd.Context()); err != nil && !errors.Is(err, huh.ErrUserAborted) {
+					return err
+				}
+				if !ok {
+					lipgloss.Fprintln(out, dimStyle.Render("Cancelled: nothing was changed or recorded."))
+					return nil
+				}
+				if err := plan.LogOverride(log); err != nil {
+					return err
+				}
+				lipgloss.Fprintln(out, okStyle.Render("✓ ")+"Override recorded in the activity log.")
 			}
 			auto := plan.Count(onboard.Auto)
 			if auto == 0 {
@@ -86,10 +138,6 @@ stops, always. Every change is recorded in the activity log
 				return nil
 			}
 
-			log, err := activity.Default()
-			if err != nil {
-				return err
-			}
 			lipgloss.Fprintln(out)
 			runErr := plan.Run(cmd.Context(), log, func(s onboard.Step) {
 				if s.Outcome == onboard.Succeeded {
@@ -115,6 +163,7 @@ stops, always. Every change is recorded in the activity log
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show the plan and stop; change nothing")
+	cmd.Flags().StringVar(&override, "override", "", "onboard even though the sheet doesn't pass them, for this reason (recorded)")
 	return cmd
 }
 
@@ -159,6 +208,9 @@ func printPlan(out io.Writer, p onboard.Plan) {
 		lipgloss.Fprintln(out, st.Render(s.Kind.Icon())+" "+boldStyle.Render(s.System)+strings.Repeat(" ", width-lipgloss.Width(s.System)+2)+st.Render(s.Kind.String()))
 		if s.Now != "" {
 			lipgloss.Fprintln(out, dimStyle.Render("    "+s.Now))
+		}
+		if s.Warning != "" {
+			lipgloss.Fprintln(out, "    "+warnStyle.Render("! ")+s.Warning)
 		}
 		if s.Action != "" {
 			lipgloss.Fprintln(out, "    → "+s.Action)

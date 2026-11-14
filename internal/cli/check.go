@@ -76,6 +76,9 @@ func printReport(out io.Writer, r check.Report) {
 		for _, d := range res.Details {
 			lipgloss.Fprintln(out, dimStyle.Render("    "+d))
 		}
+		if res.Warning != "" {
+			lipgloss.Fprintln(out, "    "+warnStyle.Render("! ")+res.Warning)
+		}
 		if res.Fix != "" {
 			lipgloss.Fprintln(out, "    → "+res.Fix)
 		}

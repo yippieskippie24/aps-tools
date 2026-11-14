@@ -45,3 +45,5 @@ What does this make easier or harder?
 | [0009](0009-google-service-account.md) | Read the membership Google Sheet as a service account |
 | [0010](0010-members-before-vetting-began.md) | Members who joined before "App vetted" was used count as vetted |
 | [0011](0011-onboarding-plan-then-run.md) | Onboarding plans first, lists manual steps, and logs to a text file |
+| [0012](0012-webmaster-override.md) | The webmaster can override the vetting gate, with a recorded reason |
+| [0013](0013-members-screen-bulk-checks.md) | The Members screen: bulk checks and an in-memory snapshot |

@@ -117,6 +117,48 @@ const fixInvite = "Send them an invite: on the forum, open your profile → Invi
 
 // memberStatus decides the result. It is separate from CheckMember so it can
 // be tested without a network.
+// CheckMembers implements connectors.BulkChecker. It reads the forum's whole
+// user list and your invites once (a handful of requests, where checking one
+// by one would take several per member and hit the forum's limit of about
+// 20 requests a minute for this kind of key). Read-only.
+func (c *Connector) CheckMembers(ctx context.Context, emails []string) (map[string]connectors.MemberStatus, error) {
+	users, err := c.client.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byEmail := map[string]AdminUser{}
+	for _, u := range users {
+		for _, e := range append([]string{u.Email}, u.SecondaryEmails...) {
+			if e != "" {
+				byEmail[strings.ToLower(e)] = u
+			}
+		}
+	}
+	var invites []Invite
+	for _, filter := range []string{"pending", "expired"} {
+		some, err := c.client.AllInvites(ctx, filter)
+		if err != nil {
+			return nil, errors.New("couldn't read invites: " + err.Error())
+		}
+		invites = append(invites, some...)
+	}
+
+	out := make(map[string]connectors.MemberStatus, len(emails))
+	now := time.Now()
+	for _, email := range emails {
+		u, found := byEmail[strings.ToLower(email)]
+		// The list leaves out groups and suspension dates. Fetch the full
+		// record only when they matter, to stay well under the rate limit.
+		if found && (c.cfg.MemberGroup != "" || u.SuspendReason != "" || u.SilenceReason != "") {
+			if u, err = c.client.GetUser(ctx, u.ID); err != nil {
+				return nil, err
+			}
+		}
+		out[email] = memberStatus(u, found, invites, email, c.cfg.MemberGroup, now)
+	}
+	return out, nil
+}
+
 func memberStatus(u AdminUser, found bool, invites []Invite, email, memberGroup string, now time.Time) connectors.MemberStatus {
 	if !found || u.Staged {
 		return noAccountStatus(u, found, invites, email, now)

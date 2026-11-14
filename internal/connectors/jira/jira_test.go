@@ -165,3 +165,51 @@ func TestCleanSite(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckMembersReadsEveryPage(t *testing.T) {
+	var searches int
+	c := fakeJira(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("query") != "" {
+			searches++ // a fallback search for someone not in the list
+			w.Write([]byte(`{"values":[{"accountId":"9","emailAddress":"","displayName":"Hidden Hal","active":true}]}`))
+			return
+		}
+		switch q.Get("start") {
+		case "0":
+			w.Write([]byte(`{"isLastPage":false,"values":[
+				{"accountId":"1","emailAddress":"Alex@Example.com","displayName":"Alex","active":true},
+				{"accountId":"2","emailAddress":"sam@example.com","displayName":"Sam","active":false}]}`))
+		case "2":
+			w.Write([]byte(`{"isLastPage":true,"values":[
+				{"accountId":"9","emailAddress":"","displayName":"Hidden Hal","active":true}]}`))
+		default:
+			t.Errorf("unexpected start %q", q.Get("start"))
+		}
+	})
+	got, err := c.CheckMembers(context.Background(), []string{"alex@example.com", "sam@example.com", "hal@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["alex@example.com"].State != connectors.StateOK || got["sam@example.com"].State != connectors.StateProblem {
+		t.Errorf("got %+v", got)
+	}
+	// Hal isn't matched by email in the list, but someone's email is
+	// hidden, so a search finds him.
+	if got["hal@example.com"].State != connectors.StateOK || searches != 1 {
+		t.Errorf("hidden-email fallback: %+v after %d searches", got["hal@example.com"], searches)
+	}
+}
+
+func TestCheckMembersNoHiddenEmailsNoSearches(t *testing.T) {
+	c := fakeJira(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("query") != "" {
+			t.Error("searched one by one although every email was visible")
+		}
+		w.Write([]byte(`{"isLastPage":true,"values":[{"accountId":"1","emailAddress":"alex@example.com","displayName":"Alex","active":true}]}`))
+	})
+	got, _ := c.CheckMembers(context.Background(), []string{"nobody@example.com"})
+	if got["nobody@example.com"].State != connectors.StateMissing {
+		t.Errorf("got %+v", got)
+	}
+}

@@ -125,3 +125,41 @@ func TestBadVettingDateIsExplained(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestInactiveSpellings(t *testing.T) {
+	for status, want := range map[string]bool{"Inactive": true, "Not Active": true, "not-active": true, "Active": false, "": false, "Pending": false} {
+		if got := (Member{Status: status}).Inactive(); got != want {
+			t.Errorf("Inactive(%q) = %v", status, got)
+		}
+	}
+	// A "Not Active" member who started before vetting began is still
+	// ready, but flagged.
+	m := Member{Status: "Not Active", StartDate: "8/16/2012", Emails: []string{"bo@example.com"}, Row: 5}
+	st := memberStatus([]Member{m}, time.Now(), vettingBegan)
+	if st.State != connectors.StateOK || !strings.Contains(st.Warning, `"Not Active"`) {
+		t.Errorf("got %v %q", st.State, st.Warning)
+	}
+}
+
+func TestAllMembers(t *testing.T) {
+	var calls int32
+	c := connectorFor(t, true, &calls)
+	all, err := c.AllMembers(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// sampleRows: Alex (twice), Sam, Olive (two addresses in one cell).
+	if len(all) != 3 {
+		t.Fatalf("got %d entries: %+v", len(all), all)
+	}
+	byEmail := map[string]connectors.DirectoryEntry{}
+	for _, e := range all {
+		byEmail[e.Person.Email] = e
+	}
+	if e := byEmail["alex@example.com"]; e.Status.State != connectors.StateOK || e.Person.Row != 2 || e.Person.Name() != "Alex Example" {
+		t.Errorf("alex: %+v", e)
+	}
+	if e := byEmail["sam@example.com"]; e.Status.State != connectors.StatePending {
+		t.Errorf("sam: %+v", e)
+	}
+}

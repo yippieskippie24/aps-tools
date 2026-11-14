@@ -116,6 +116,9 @@ type Step struct {
 	// Action is what the tool will do (Auto), or what to do by hand
 	// (Manual, Waiting, Blocked). Empty when there's nothing to do.
 	Action string
+	// Warning is something to double-check before going ahead, e.g. a
+	// member whose status isn't Active. It doesn't stop anything.
+	Warning string
 
 	// Outcome and Result are filled in when the step is run.
 	Outcome Outcome
@@ -128,9 +131,13 @@ type Step struct {
 type Plan struct {
 	// Person is who is being onboarded, as the membership sheet has them.
 	Person connectors.Person
-	// Ready is true only when the membership sheet says they're vetted.
-	// When false, Steps is empty and Gate says why.
+	// Ready is true only when the membership sheet says they're vetted, or
+	// the webmaster overrode it (see Override). When false, Steps is empty
+	// and Gate says why.
 	Ready bool
+	// Override is the webmaster's reason for onboarding someone the sheet
+	// didn't pass. Empty when there was no override.
+	Override string
 	// Gate is the membership sheet's answer.
 	Gate connectors.MemberStatus
 	// Steps are in onboarding order (docs/onboarding-process.md).
@@ -191,19 +198,29 @@ func (p Plan) Summary() string {
 	if blocked > 0 {
 		parts = append(parts, plural(blocked, "system", "systems")+" couldn't be checked")
 	}
+	if n := p.warnings(); n > 0 {
+		parts = append(parts, plural(n, "warning", "warnings")+" to check")
+	}
+	prefix := ""
+	if p.Override != "" {
+		prefix = "Sheet overridden. "
+	}
 	if len(parts) == 0 {
 		if p.Count(Waiting) > 0 {
 			return "Nothing to do: waiting on the member to finish."
 		}
 		return "Nothing to do: already set up everywhere."
 	}
-	return capitalise(connectors.JoinPlain(parts)) + "."
+	return prefix + capitalise(connectors.JoinPlain(parts)) + "."
 }
 
 // PlainText renders the plan as a checklist, for pasting into a note.
 func (p Plan) PlainText() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "APS onboarding: %s\n", p.Who())
+	if p.Override != "" {
+		fmt.Fprintf(&b, "Membership sheet overridden by the webmaster. Reason: %s\n", p.Override)
+	}
 	fmt.Fprintf(&b, "Checked %s\n\n", p.PreparedAt.Format("Mon 2 Jan 2006, 3:04 PM"))
 	if !p.Ready {
 		fmt.Fprintf(&b, "%s\n", p.Summary())
@@ -216,6 +233,9 @@ func (p Plan) PlainText() string {
 		fmt.Fprintf(&b, "%s %s: %s\n", s.Kind.Icon(), s.System, s.Kind)
 		if s.Now != "" {
 			fmt.Fprintf(&b, "    %s\n", s.Now)
+		}
+		if s.Warning != "" {
+			fmt.Fprintf(&b, "    ! %s\n", s.Warning)
 		}
 		if s.Action != "" {
 			fmt.Fprintf(&b, "    → %s\n", s.Action)
@@ -246,20 +266,67 @@ func (s Step) OutcomeText() string {
 // (sheet not connected, member not vetted, a system not answering) is part
 // of the plan, so it can be shown.
 func Prepare(ctx context.Context, conns []connectors.Connector, email string) (Plan, error) {
+	return prepare(ctx, conns, email, "")
+}
+
+// MinReasonLength is the shortest override reason accepted: enough for a
+// few words, so the record means something later.
+const MinReasonLength = 10
+
+// ErrNoReason means an override was asked for without a real reason.
+var ErrNoReason = fmt.Errorf("an override needs a reason of at least %d characters, e.g. \"Paid at the meeting; the chair will update the sheet\"", MinReasonLength)
+
+// CheckReason validates an override reason (see ErrNoReason).
+func CheckReason(reason string) error {
+	if len([]rune(strings.TrimSpace(reason))) < MinReasonLength {
+		return ErrNoReason
+	}
+	return nil
+}
+
+// CanOverride reports whether the webmaster may override this plan's gate:
+// the sheet was read and said "not vetted yet" or "not on the list". If the
+// sheet couldn't be read at all, the connection must be fixed instead.
+func (p Plan) CanOverride() bool {
+	return !p.Ready && (p.Gate.State == connectors.StatePending || p.Gate.State == connectors.StateMissing)
+}
+
+// PrepareOverride is Prepare for someone the membership sheet doesn't pass
+// (not vetted, or not on it), when the webmaster decides to go ahead anyway,
+// for the given reason. READ-ONLY, like Prepare: the override is recorded
+// by LogOverride once the webmaster confirms it. If the sheet does pass
+// them, it's an ordinary plan with no override.
+func PrepareOverride(ctx context.Context, conns []connectors.Connector, email, reason string) (Plan, error) {
+	if err := CheckReason(reason); err != nil {
+		return Plan{}, err
+	}
+	return prepare(ctx, conns, email, strings.TrimSpace(reason))
+}
+
+func prepare(ctx context.Context, conns []connectors.Connector, email, override string) (Plan, error) {
 	email, err := check.NormalizeEmail(email)
 	if err != nil {
 		return Plan{}, err
 	}
 	plan := Plan{Person: connectors.Person{Email: email}, PreparedAt: time.Now()}
 
-	// 1. The gate: the membership sheet must say they're vetted.
+	// 1. The gate: the membership sheet must say they're vetted, unless
+	// the webmaster overrides it with a reason.
 	dir, others := splitDirectory(conns)
 	plan.Gate = gate(ctx, dir, &plan.Person)
-	if plan.Gate.State != connectors.StateOK {
+	switch {
+	case plan.Gate.State == connectors.StateOK:
+		plan.Ready = true
+		plan.Steps = append(plan.Steps, Step{System: dir.Name(), Kind: Done, Now: gateLine(plan), Warning: plan.Gate.Warning})
+	case override != "" && plan.CanOverride():
+		plan.Ready, plan.Override = true, override
+		plan.Steps = append(plan.Steps, Step{System: dir.Name(), Kind: Manual,
+			Now:     "Overridden by you: " + lowerFirst(gateLine(plan)),
+			Action:  "Ask the membership chair to update the sheet, so it matches.",
+			Warning: "Override reason: " + override})
+	default:
 		return plan, nil
 	}
-	plan.Ready = true
-	plan.Steps = append(plan.Steps, Step{System: dir.Name(), Kind: Done, Now: gateLine(plan)})
 
 	// 2. Check every other system at once, then decide each step.
 	report, err := check.Run(ctx, others, email, nil)
@@ -278,14 +345,32 @@ func Prepare(ctx context.Context, conns []connectors.Connector, email string) (P
 	wg.Wait()
 	plan.Steps = append(plan.Steps, steps...)
 
-	// 3. The parts of onboarding that aren't one system's check.
-	plan.Steps = append(plan.Steps,
-		Step{System: "Welcome email", Kind: Manual,
-			Action: "Send it from your own mail for now. (The tool will draft it in a later version.)"},
-		Step{System: "Membership sheet record", Kind: Later,
-			Now: "The tool will record onboarding on the sheet in a later version."},
-	)
+	// 3. The parts of onboarding that aren't one system's check. Someone
+	// already set up everywhere is an existing member, not a new one, so
+	// they don't need a welcome email.
+	welcome := Step{System: "Welcome email", Kind: Manual,
+		Action: "Send it from your own mail for now. (The tool will draft it in a later version.)"}
+	if allDone(steps) {
+		welcome = Step{System: "Welcome email", Kind: Done,
+			Now: "Not needed: they're already set up everywhere. (If they never had one, you can still send it.)"}
+	}
+	record := Step{System: "Membership sheet record", Kind: Later,
+		Now: "The tool will record onboarding on the sheet in a later version."}
+	if plan.Override != "" {
+		record.Now = "The tool will record onboarding, the override and its reason on the sheet in a later version. For now they're in the activity log."
+	}
+	plan.Steps = append(plan.Steps, welcome, record)
 	return plan, nil
+}
+
+// allDone reports whether every system already has the member set up.
+func allDone(steps []Step) bool {
+	for _, s := range steps {
+		if s.Kind != Done {
+			return false
+		}
+	}
+	return true
 }
 
 // splitDirectory separates the membership list from the other systems.
@@ -332,16 +417,15 @@ func gate(ctx context.Context, dir connectors.Directory, person *connectors.Pers
 // gateLine is the membership sheet step's "now" line, e.g.
 // "Vetted (row 42)".
 func gateLine(p Plan) string {
-	line := p.Gate.Summary
 	if p.Person.Row > 0 {
-		line = strings.TrimSuffix(line, ".") + fmt.Sprintf(" (row %d).", p.Person.Row)
+		return fmt.Sprintf("Row %d: %s", p.Person.Row, lowerFirst(p.Gate.Summary))
 	}
-	return line
+	return p.Gate.Summary
 }
 
 // planStep decides one system's step from its check result.
 func planStep(ctx context.Context, c connectors.Connector, person connectors.Person, st connectors.MemberStatus) Step {
-	step := Step{System: c.Name(), Now: st.Summary}
+	step := Step{System: c.Name(), Now: st.Summary, Warning: st.Warning}
 	if st.State == connectors.StateUnknown {
 		step.Kind, step.Action = Blocked, st.Fix
 		return step
@@ -432,6 +516,17 @@ func (p *Plan) Failures() int {
 	return n
 }
 
+// LogOverride records the webmaster's decision to override the sheet, and
+// why, in the activity log. Call it once the webmaster confirms the
+// override, before any changes are made.
+func (p *Plan) LogOverride(log *activity.Log) error {
+	if p.Override == "" {
+		return nil
+	}
+	return log.Add(activity.Entry{Member: p.Person.Email, System: "Membership sheet", OK: true,
+		What: "Override by the webmaster: " + strings.TrimSuffix(p.Gate.Summary, ".") + ". Reason: " + p.Override})
+}
+
 // LogStart records the start of an onboarding run in the activity log.
 func (p *Plan) LogStart(log *activity.Log) error {
 	return log.Add(activity.Entry{Member: p.Person.Email, System: "Onboarding", OK: true,
@@ -488,6 +583,17 @@ func capitalise(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// warnings counts the steps with something to double-check.
+func (p Plan) warnings() int {
+	n := 0
+	for _, s := range p.Steps {
+		if s.Warning != "" {
+			n++
+		}
+	}
+	return n
 }
 
 // lowerFirst lower-cases the first letter, so a system's sentence can

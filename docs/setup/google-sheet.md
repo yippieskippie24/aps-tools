@@ -38,8 +38,12 @@ require App vetted for everyone. To change it, run `aps-tools setup sheet` again
 `vetting_started` in the settings file (written like `2025-03-01`). Background:
 [decision 0010](../decisions/0010-members-before-vetting-began.md).
 
-The check also shows their name and row number, plus Member Status (with a note if it isn't
-"Active"), start date, paid and due dates (with a note if the due date has passed). It notes when
+**Member Status that isn't Active** (e.g. "Inactive" or "Not Active") doesn't stop anyone, but it
+shows as a **!** warning in the check and the onboarding plan, so you can ask the chair first.
+A blank status gets no warning.
+
+The check also shows their name and row number, plus Member Status (with a warning if it's
+filled in and isn't "Active"), start date, paid and due dates (with a note if the due date has passed). It notes when
 the same email is on more than one row. It **never** shows addresses or phone numbers.
 
 **How columns are found:** by their header text, so moving or slightly renaming columns is fine:

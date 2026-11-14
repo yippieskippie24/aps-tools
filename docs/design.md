@@ -129,7 +129,8 @@ become automatic as they're built ([decision 0011](decisions/0011-onboarding-pla
 - Local activity log (a plain text file; see [decision 0011](decisions/0011-onboarding-plan-then-run.md)).
 
 ### Phase 3 — Keeping on top of things
-- **Bulk audit:** compare the Google Sheet against every system and list the gaps.
+- **Bulk audit:** compare the Google Sheet against every system and list the gaps. ✅ **Built
+  early** as the app's **Members** screen ([decision 0013](decisions/0013-members-screen-bulk-checks.md)).
 - **Follow-ups:** flag members who were invited/added but never finished activating.
 - **Offboarding:** remove a lapsed member everywhere.
 - **Board changes:** half the board is elected each July. Update the role mailing lists

@@ -132,6 +132,26 @@ func (m Member) Name() string { return strings.TrimSpace(m.FirstName + " " + m.L
 // Active reports whether Member Status says "Active".
 func (m Member) Active() bool { return strings.HasPrefix(strings.ToLower(m.Status), "active") }
 
+// Inactive reports whether Member Status says they're not active, written
+// as "Inactive", "Not Active" or "Not-Active". A blank status is neither
+// active nor inactive: it just hasn't been filled in.
+func (m Member) Inactive() bool {
+	s := strings.Join(strings.FieldsFunc(strings.ToLower(m.Status), func(r rune) bool { return r == ' ' || r == '-' }), " ")
+	return strings.HasPrefix(s, "inactive") || strings.HasPrefix(s, "not active")
+}
+
+// statusWarning is the warning for a member whose Member Status is filled in
+// but isn't Active, e.g. a lapsed member. The tool doesn't stop them (the
+// webmaster decides), but makes sure it's seen in the check and in the
+// onboarding plan. A blank status gets no warning: it's often just not
+// filled in.
+func (m Member) statusWarning() string {
+	if m.Status == "" || m.Active() {
+		return ""
+	}
+	return "Member Status is \"" + m.Status + "\", not Active. Check with the membership chair before setting them up."
+}
+
 var emailIn = regexp.MustCompile(`[^\s,;:<>()"'/]+@[^\s,;:<>()"'/]+\.[^\s,;:<>()"'/]+`)
 
 // Members turns the rows below the header into Members. Rows with no email

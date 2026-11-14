@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -200,11 +201,71 @@ func (c *Connector) CheckMember(ctx context.Context, email string) (connectors.M
 		return statusFor(page.Values[0], desk, "Matched by search — Jira hides this person's email address."), nil
 	}
 
+	return notACustomer(desk), nil
+}
+
+// notACustomer is the result for someone who isn't on the desk.
+func notACustomer(desk string) connectors.MemberStatus {
 	return connectors.MemberStatus{
 		State:   connectors.StateMissing,
 		Summary: "Not a customer on " + desk + ".",
 		Fix:     "In Jira, open " + desk + " → Customers → Add customers, and enter their email.",
-	}, nil
+	}
+}
+
+// maxCustomerPages stops a runaway loop if Jira never says "last page"
+// (50 per page, so 100 pages is 5,000 customers: far more than APS has).
+const maxCustomerPages = 100
+
+// CheckMembers implements connectors.BulkChecker: it reads the desk's whole
+// customer list, a page at a time, and matches every email against it.
+// People whose email Jira hides can't be matched from the list, so anyone
+// not found is double-checked with an ordinary search, but only when the
+// list has hidden emails. Read-only.
+func (c *Connector) CheckMembers(ctx context.Context, emails []string) (map[string]connectors.MemberStatus, error) {
+	path := "/rest/servicedeskapi/servicedesk/" + url.PathEscape(c.deskID) + "/customer"
+	byEmail := map[string]customer{}
+	hidden := false
+	for start, n := 0, 0; n < maxCustomerPages; n++ {
+		var page struct {
+			Values     []customer `json:"values"`
+			IsLastPage bool       `json:"isLastPage"`
+		}
+		q := url.Values{"start": {strconv.Itoa(start)}, "limit": {"50"}}
+		if err := c.get(ctx, path, q, &page); err != nil {
+			return nil, err
+		}
+		for _, cu := range page.Values {
+			if cu.EmailAddress == "" {
+				hidden = true
+				continue
+			}
+			byEmail[strings.ToLower(cu.EmailAddress)] = cu
+		}
+		if page.IsLastPage || len(page.Values) == 0 {
+			break
+		}
+		start += len(page.Values)
+	}
+
+	desk := c.deskLabel()
+	out := make(map[string]connectors.MemberStatus, len(emails))
+	for _, email := range emails {
+		if cu, ok := byEmail[strings.ToLower(email)]; ok {
+			out[email] = statusFor(cu, desk, "")
+			continue
+		}
+		if !hidden {
+			out[email] = notACustomer(desk)
+			continue
+		}
+		st, err := c.CheckMember(ctx, email)
+		if err != nil {
+			return nil, err
+		}
+		out[email] = st
+	}
+	return out, nil
 }
 
 func statusFor(cu customer, desk, note string) connectors.MemberStatus {

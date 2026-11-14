@@ -31,10 +31,8 @@ const (
 	screenHelp
 	screenCheck
 	screenOnboard
+	screenMembers
 )
-
-// maxContentWidth keeps lines readable on very wide terminals.
-const maxContentWidth = 76
 
 // App is the whole application's state (the Bubble Tea "model").
 type App struct {
@@ -54,11 +52,22 @@ type App struct {
 	spin     int // which spinner frame to draw (shared by all screens)
 	results  []doctor.Result
 
+	// scroll is how far the current screen's content is scrolled down, in
+	// lines (see scroll.go). It goes back to the top on a new screen.
+	scroll int
+
 	// Check a member screen (see checkscreen.go)
 	member memberCheck
 
 	// Onboard a new member screen (see onboardscreen.go)
 	onboard onboarding
+
+	// Members screen (see membersscreen.go)
+	members membersView
+
+	// back is where esc returns to from Check and Onboard: the home menu,
+	// or the Members list when a member was opened from there.
+	back screen
 }
 
 // New creates the app. deps is normally doctor.DefaultDeps().
@@ -104,6 +113,17 @@ func (a App) Init() tea.Cmd {
 
 // Update handles one event and returns the new state.
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	before := a.screen
+	m, cmd := a.update(msg)
+	a = m.(App)
+	if a.screen != before {
+		a.scroll = 0 // every screen opens at the top
+	}
+	a.scroll = min(a.scroll, a.maxScroll()) // e.g. after the window grows
+	return a, cmd
+}
+
+func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
 		a.styles = newStyles(msg.IsDark())
@@ -116,7 +136,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case spinTickMsg:
-		busy := a.onboard.phase == obPlanning || a.onboard.phase == obRunning
+		busy := a.onboard.phase == obPlanning || a.onboard.phase == obRunning || a.members.loading
 		if !a.checking && !a.member.running && !busy {
 			return a, nil
 		}
@@ -124,7 +144,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, spinTick()
 
 	case doctorDoneMsg:
-		a.checking = false
+		a.checking, a.scroll = false, 0
 		a.results = msg.results
 		return a, nil
 
@@ -134,7 +154,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.member.err = msg.err.Error()
 			return a, a.member.input.Focus()
 		}
-		a.member.report = &msg.report
+		a.member.report, a.scroll = &msg.report, 0
 		return a, nil
 
 	case copiedMsg:
@@ -145,7 +165,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case rosterDoneMsg, memberRefreshedMsg:
+		return a.membersMsg(msg), nil
+
 	case planDoneMsg, stepDoneMsg, obCopiedMsg:
+		if _, ok := msg.(planDoneMsg); ok {
+			a.scroll = 0
+		}
 		a, cmd, _ := a.onboardMsg(msg)
 		return a, cmd
 
@@ -153,6 +179,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// ctrl+c always quits, from anywhere.
 		if msg.String() == "ctrl+c" {
 			return a, tea.Quit
+		}
+		if scrolled, ok := a.scrollKey(msg); ok {
+			return scrolled, nil
 		}
 		switch a.screen {
 		case screenHome:
@@ -165,6 +194,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.updateCheck(msg)
 		case screenOnboard:
 			return a.updateOnboard(msg)
+		case screenMembers:
+			return a.updateMembers(msg)
 		}
 	}
 	return a, nil
@@ -199,9 +230,14 @@ func (a App) updateHome(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // choose acts on a menu item.
 func (a App) choose(item menuItem) (tea.Model, tea.Cmd) {
 	switch item.action {
+	case actionMembers:
+		a.back = screenHome
+		return a.openMembers()
 	case actionCheck:
+		a.back = screenHome
 		return a.openCheck()
 	case actionOnboard:
+		a.back = screenHome
 		return a.openOnboard()
 	case actionDoctor:
 		a.screen = screenDoctor
@@ -244,53 +280,68 @@ func (a App) updateHelp(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // ---- Drawing ----
 
-// View draws the current screen, centred in the terminal.
+// View draws the current screen, filling the terminal window: the title
+// bar across the top, the screen's content in a card that takes up the
+// rest, and the keys along the bottom. Content taller than the card
+// scrolls (see scroll.go).
 func (a App) View() tea.View {
-	w := a.contentWidth()
-
-	var body, keys string
-	switch a.screen {
-	case screenHome:
-		body = a.viewHome(w)
-		keys = a.keyHelp("↑/↓", "move", "enter", "select", "?", "help", "q", "quit")
-	case screenDoctor:
-		body = a.viewDoctor(w)
-		keys = a.keyHelp("r", "re-check", "esc", "back", "?", "help")
-	case screenHelp:
-		body = a.viewHelp(w)
-		keys = a.keyHelp("esc", "back")
-	case screenCheck:
-		body = a.viewCheck(w)
-		keys = a.checkKeys()
-	case screenOnboard:
-		body = a.viewOnboard(w)
-		keys = a.onboardKeys()
-	}
+	w := a.frameWidth()
+	body, keys := a.screenContent(w)
 
 	page := lipgloss.JoinVertical(lipgloss.Left,
 		a.viewHeader(w),
-		"",
-		body,
-		"",
+		a.viewCard(body, w, a.cardHeight()),
 		keys,
 	)
 
-	v := tea.NewView(lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, page))
+	v := tea.NewView(lipgloss.NewStyle().PaddingLeft(1).Render(page))
 	v.AltScreen = true // full-window app; your terminal is restored on exit
 	v.WindowTitle = "APS Webmaster"
 	return v
 }
 
-func (a App) contentWidth() int {
-	w := a.width - 4
-	if w > maxContentWidth {
-		w = maxContentWidth
+// screenContent is the current screen's content (inside the card) and its
+// key help. w is the full frame width.
+func (a App) screenContent(w int) (body, keys string) {
+	switch a.screen {
+	case screenHome:
+		return a.viewHome(w), a.keyHelp("↑/↓", "move", "enter", "select", "?", "help", "q", "quit")
+	case screenDoctor:
+		return a.viewDoctor(w), a.keyHelp("r", "re-check", "esc", "back", "?", "help")
+	case screenHelp:
+		return a.viewHelp(w), a.keyHelp("esc", "back")
+	case screenCheck:
+		return a.viewCheck(w), a.checkKeys()
+	case screenOnboard:
+		return a.viewOnboard(w), a.onboardKeys()
+	case screenMembers:
+		return a.viewMembers(w), a.membersKeys()
 	}
-	if w < 40 {
-		w = 40
-	}
-	return w
+	return "", ""
 }
+
+// minWidth and minHeight are the smallest window the layout is designed
+// for; anything smaller is drawn at this size and the terminal clips it.
+const (
+	minWidth  = 40
+	minHeight = 12
+)
+
+// frameWidth is the width of the title bar and card: the whole window,
+// less a one-column margin each side.
+func (a App) frameWidth() int {
+	return max(a.width-2, minWidth)
+}
+
+// cardHeight is the height of the content card, border included: the
+// window less the title bar (3 lines) and the key help (1 line).
+func (a App) cardHeight() int {
+	return max(a.height, minHeight) - 4
+}
+
+// innerWidth is the width available to text inside the card (the frame
+// less the card's border and side padding). Screens lay out to this.
+func innerWidth(w int) int { return w - 6 }
 
 // viewHeader draws the title bar: app name on the left, version on the right.
 func (a App) viewHeader(w int) string {

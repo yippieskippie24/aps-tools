@@ -113,7 +113,7 @@ func TestMemberStatus(t *testing.T) {
 		{"nobody@example.com", connectors.StateMissing, "Not on the membership list", ""},
 		{"sam@example.com", connectors.StatePending, "application is still in progress", "Sam Sample (row 3)"},
 		{"alex@example.com", connectors.StateOK, "vetted", "Listed more than once: rows 2, 7"},
-		{"olive@example.com", connectors.StateOK, "vetted", "not marked Active"},
+		{"olive@example.com", connectors.StateOK, "vetted", "Member Status: Inactive."},
 	}
 	for _, tc := range cases {
 		st := memberStatus(Find(members, tc.email), now, time.Time{})
@@ -127,7 +127,13 @@ func TestMemberStatus(t *testing.T) {
 			}
 		}
 	}
+	if alex := memberStatus(Find(members, "alex@example.com"), now, time.Time{}); alex.Warning != "" {
+		t.Errorf("an Active member got a warning: %q", alex.Warning)
+	}
 	olive := memberStatus(Find(members, "olive@example.com"), now, time.Time{})
+	if !strings.Contains(olive.Warning, `"Inactive", not Active`) {
+		t.Errorf("a vetted but inactive member should be flagged, not stopped: %v %q", olive.State, olive.Warning)
+	}
 	if !strings.Contains(strings.Join(olive.Details, " "), "has passed") {
 		t.Errorf("past due date not noted: %v", olive.Details)
 	}

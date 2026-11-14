@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -193,6 +194,11 @@ type AdminUser struct {
 		Name      string `json:"name"`
 		Automatic bool   `json:"automatic"`
 	} `json:"groups"`
+	// Only in the bulk list (ListUsers):
+	Email           string   `json:"email"`
+	SecondaryEmails []string `json:"secondary_emails"`
+	SuspendReason   string   `json:"suspend_reason"`
+	SilenceReason   string   `json:"silence_reason"`
 }
 
 // IsActive reports whether the user confirmed their email (missing = yes).
@@ -218,6 +224,71 @@ func (c *Client) FindUserByEmail(ctx context.Context, email string) (AdminUser, 
 		return AdminUser{}, false, err
 	}
 	return full, true, nil
+}
+
+// maxPages stops a runaway loop if the forum keeps answering (100 users or
+// about 50 invites a page, so far beyond APS's size).
+const maxPages = 50
+
+// ListUsers returns every real account on the forum, with email addresses,
+// in as few requests as possible (100 a page), for checking many members at
+// once. Showing emails adds one "show emails" line to the forum's staff
+// action log per page, which is why single checks (FindUserByEmail) filter
+// by email instead. List rows leave out groups and suspension dates: use
+// the full record (GetUser) when those matter.
+func (c *Client) ListUsers(ctx context.Context) ([]AdminUser, error) {
+	var all []AdminUser
+	for page := 1; page <= maxPages; page++ {
+		var rows []AdminUser
+		q := url.Values{"show_emails": {"true"}, "page": {strconv.Itoa(page)}}
+		if err := c.get(ctx, "/admin/users/list/all.json", q, &rows); err != nil {
+			return nil, err
+		}
+		if len(rows) == 0 {
+			break
+		}
+		all = append(all, rows...)
+	}
+	return all, nil
+}
+
+// GetUser reads one account's full admin record.
+func (c *Client) GetUser(ctx context.Context, id int) (AdminUser, error) {
+	var full AdminUser
+	err := c.get(ctx, fmt.Sprintf("/admin/users/%d.json", id), nil, &full)
+	return full, err
+}
+
+// AllInvites returns all of the key owner's invites with this filter
+// ("pending" or "expired"), following the forum's pages.
+func (c *Client) AllInvites(ctx context.Context, filter string) ([]Invite, error) {
+	var all []Invite
+	seen := map[string]bool{}
+	for page := 0; page < maxPages; page++ {
+		q := url.Values{"filter": {filter}}
+		if len(all) > 0 {
+			q.Set("offset", strconv.Itoa(len(all)))
+		}
+		var r struct {
+			Invites []Invite `json:"invites"`
+		}
+		if err := c.get(ctx, "/u/"+url.PathEscape(c.username)+"/invited.json", q, &r); err != nil {
+			return nil, err
+		}
+		added := 0
+		for _, inv := range r.Invites {
+			k := inv.Email + "|" + inv.CreatedAt
+			if !seen[k] {
+				seen[k] = true
+				all = append(all, inv)
+				added++
+			}
+		}
+		if added == 0 {
+			break // an empty page, or the forum ignored the offset
+		}
+	}
+	return all, nil
 }
 
 // Invite is one email invitation.

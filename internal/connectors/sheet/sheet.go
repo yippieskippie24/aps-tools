@@ -141,6 +141,34 @@ func (c *Connector) LookupMember(ctx context.Context, email string) (connectors.
 	return p, st, nil
 }
 
+// AllMembers implements connectors.MemberLister: everyone on the member tab,
+// once each (by their first email address), with the same verdict the
+// member check gives. Rows without an email are left out (sheet discover
+// counts them). Read-only.
+func (c *Connector) AllMembers(ctx context.Context) ([]connectors.DirectoryEntry, error) {
+	members, err := c.load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	seen := map[string]bool{}
+	var out []connectors.DirectoryEntry
+	for _, m := range members {
+		email := m.Emails[0]
+		if seen[email] {
+			continue
+		}
+		seen[email] = true
+		rows := Find(members, email)
+		best := pick(rows, c.vettingStarted)
+		out = append(out, connectors.DirectoryEntry{
+			Person: connectors.Person{Email: email, FirstName: best.FirstName, LastName: best.LastName, Row: best.Row},
+			Status: memberStatus(rows, now, c.vettingStarted),
+		})
+	}
+	return out, nil
+}
+
 // pick chooses which row to judge a member on when they're listed more
 // than once: a ready row if there is one, else the last.
 func pick(rows []Member, vettingStarted time.Time) Member {
@@ -213,11 +241,7 @@ func memberStatus(rows []Member, now, vettingStarted time.Time) connectors.Membe
 		details = append(details, "Listed more than once: rows "+strings.Join(nums, ", ")+".")
 	}
 	if m.Status != "" {
-		line := "Member Status: " + m.Status + "."
-		if !m.Active() {
-			line += " Note: not marked Active."
-		}
-		details = append(details, line)
+		details = append(details, "Member Status: "+m.Status+".")
 	}
 	if m.StartDate != "" {
 		details = append(details, "Start date: "+m.StartDate+".")
@@ -239,7 +263,7 @@ func memberStatus(rows []Member, now, vettingStarted time.Time) connectors.Membe
 
 	if m.Established(vettingStarted) {
 		details = append(details, "\"App vetted\" is blank, which is expected: they started before "+FriendlyDate(vettingStarted)+", when vetting began.")
-		return connectors.MemberStatus{State: connectors.StateOK, Details: details,
+		return connectors.MemberStatus{State: connectors.StateOK, Details: details, Warning: m.statusWarning(),
 			Summary: "On the membership list. They joined before \"App vetted\" was tracked."}
 	}
 	if !m.Vetted {
@@ -257,5 +281,5 @@ func memberStatus(rows []Member, now, vettingStarted time.Time) connectors.Membe
 	if m.New {
 		details = append(details, "Still marked New, even though vetted.")
 	}
-	return connectors.MemberStatus{State: connectors.StateOK, Summary: summary, Details: details}
+	return connectors.MemberStatus{State: connectors.StateOK, Summary: summary, Details: details, Warning: m.statusWarning()}
 }

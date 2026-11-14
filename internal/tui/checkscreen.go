@@ -91,7 +91,7 @@ func (a App) updateCheck(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	mc := &a.member
 	if mc.running {
 		if msg.String() == "esc" {
-			a.screen = screenHome // the check finishes quietly in the background
+			a.screen = a.back // the check finishes quietly in the background
 		}
 		return a, nil
 	}
@@ -100,7 +100,7 @@ func (a App) updateCheck(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if mc.report == nil {
 		switch msg.String() {
 		case "esc":
-			a.screen = screenHome
+			a.screen = a.back
 			return a, nil
 		case "enter":
 			return a.startCheck(mc.input.Value())
@@ -114,7 +114,7 @@ func (a App) updateCheck(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Looking at a report.
 	switch msg.String() {
 	case "esc", "q":
-		a.screen = screenHome
+		a.screen = a.back
 	case "n", "/":
 		return a.openCheck()
 	case "r":
@@ -168,7 +168,7 @@ func (a App) viewCheck(w int) string {
 			b.WriteString("\n\n" + s.statusLine.Render(mc.notice))
 		}
 	}
-	return s.card.Width(w).Render(b.String())
+	return b.String()
 }
 
 // stateColor picks the colour for a member state.
@@ -206,6 +206,9 @@ func (a App) viewReport(r check.Report, inner int) string {
 		for _, d := range res.Details {
 			rows = append(rows, indent.Render(s.subtle.Width(inner-2).Render(d)))
 		}
+		if res.Warning != "" {
+			rows = append(rows, indent.Render(a.warningLine(res.Warning, inner-2)))
+		}
 		if res.Fix != "" {
 			rows = append(rows, indent.Render(lipgloss.JoinHorizontal(lipgloss.Top, s.fixArrow.Render("→ "), s.text.Width(inner-4).Render(res.Fix))))
 		}
@@ -215,4 +218,11 @@ func (a App) viewReport(r check.Report, inner int) string {
 		rows = append(rows, s.subtle.Width(inner).Render("Not checked by the tool yet: "+strings.Join(r.NotYetChecked, ", ")))
 	}
 	return strings.TrimRight(strings.Join(rows, "\n"), "\n")
+}
+
+// warningLine draws "! something to double-check" in the warning colour,
+// wrapped to width.
+func (a App) warningLine(text string, width int) string {
+	warn := lipgloss.NewStyle().Foreground(a.styles.p.warn)
+	return lipgloss.JoinHorizontal(lipgloss.Top, warn.Bold(true).Render("! "), warn.Width(width-2).Render(text))
 }

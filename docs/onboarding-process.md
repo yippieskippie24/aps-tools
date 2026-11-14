@@ -57,6 +57,11 @@ Run `aps-tools onboard alex@example.com`, or choose **2 Onboard a new member** i
 3. changes nothing until you say **Go** (`--dry-run` just shows the plan);
 4. records every change in the activity log (`aps-tools log`).
 
+**If the sheet isn't right yet** (not vetted, or not on it) but you know the member should be set
+up, add `--override "your reason"` (or press **o** in the app). The override and reason are
+recorded in the activity log. Ask the membership chair to update the sheet too. Members whose
+Member Status isn't Active are flagged with a **!** warning, but not stopped.
+
 For now the tool can't change any system itself yet, so the plan is a checklist of the □ steps
 above. Each system's step becomes automatic as it's built. Running it again is always safe: it
 only lists what's still missing.

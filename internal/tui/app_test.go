@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/yippieskippie24/aps-tools/internal/activity"
 	"github.com/yippieskippie24/aps-tools/internal/config"
@@ -25,6 +26,13 @@ func testDeps() doctor.Deps {
 		CheckOnePassword: func() error { return nil },
 		Connectors:       func(*config.Config, secrets.Store) []connectors.Connector { return nil },
 	}
+}
+
+// tall gives the app a big window, for tests that read the whole screen.
+func tall(t *testing.T, a App) App {
+	t.Helper()
+	m, _ := a.Update(tea.WindowSizeMsg{Width: 120, Height: 80})
+	return m.(App)
 }
 
 // press sends one key to the app and returns the new state and command.
@@ -76,9 +84,9 @@ func TestComingSoonShowsAMessage(t *testing.T) {
 
 func TestTestConnectionsRunsDoctorAndShowsResults(t *testing.T) {
 	a := New(testDeps())
-	a, cmd := press(t, a, "3")
+	a, cmd := press(t, a, "4")
 	if a.screen != screenDoctor || !a.checking || cmd == nil {
-		t.Fatalf("pressing 3 should start a connection test (screen=%v checking=%v)", a.screen, a.checking)
+		t.Fatalf("pressing 4 should start a connection test (screen=%v checking=%v)", a.screen, a.checking)
 	}
 
 	// Simulate the background check finishing.
@@ -100,7 +108,7 @@ func TestTestConnectionsRunsDoctorAndShowsResults(t *testing.T) {
 }
 
 func TestHelpOpensAndCloses(t *testing.T) {
-	a := New(testDeps())
+	a := tall(t, New(testDeps()))
 	a, _ = press(t, a, "?")
 	if a.screen != screenHelp {
 		t.Fatal("? should open help")
@@ -157,9 +165,9 @@ func typeText(t *testing.T, a App, text string) App {
 
 func TestCheckScreenRejectsBadEmail(t *testing.T) {
 	a := New(testDeps())
-	a, _ = press(t, a, "1")
+	a, _ = press(t, a, "2")
 	if a.screen != screenCheck {
-		t.Fatal("1 should open Check a member")
+		t.Fatal("2 should open Check a member")
 	}
 	a = typeText(t, a, "not-an-email")
 	a, cmd := press(t, a, "enter")
@@ -176,7 +184,7 @@ func TestCheckScreenRunsAndShowsReport(t *testing.T) {
 		}}}
 	}
 	a := New(deps)
-	a, _ = press(t, a, "1")
+	a, _ = press(t, a, "2")
 	a = typeText(t, a, "Alex@Example.com")
 	a, cmd := press(t, a, "enter")
 	if !a.member.running || cmd == nil {
@@ -299,10 +307,10 @@ func settle(t *testing.T, a App, cmd tea.Cmd) App {
 func TestOnboardScreen(t *testing.T) {
 	calls := 0
 	deps := onboardDeps(t, true, &calls)
-	a := New(deps)
-	a, _ = press(t, a, "2")
+	a := tall(t, New(deps))
+	a, _ = press(t, a, "3")
 	if a.screen != screenOnboard {
-		t.Fatal("2 should open Onboard a new member")
+		t.Fatal("3 should open Onboard a new member")
 	}
 	a = typeText(t, a, "alex@example.com")
 	a, cmd := press(t, a, "enter")
@@ -311,7 +319,7 @@ func TestOnboardScreen(t *testing.T) {
 		t.Fatalf("phase = %v, want the plan", a.onboard.phase)
 	}
 	view := a.View().Content
-	for _, want := range []string{"Alex Example <alex@example.com>", "(row 42)", "Add them to news@", "Add them by hand.", "copy checklist"} {
+	for _, want := range []string{"Alex Example <alex@example.com>", "Row 42", "Add them to news@", "Add them by hand.", "copy checklist"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("plan screen is missing %q", want)
 		}
@@ -352,7 +360,7 @@ func TestOnboardScreen(t *testing.T) {
 
 func TestOnboardScreenStopsWhenNotVetted(t *testing.T) {
 	calls := 0
-	a := New(onboardDeps(t, false, &calls))
+	a := tall(t, New(onboardDeps(t, false, &calls)))
 	a, _ = a.openOnboard()
 	a = typeText(t, a, "alex@example.com")
 	a, cmd := press(t, a, "enter")
@@ -364,5 +372,159 @@ func TestOnboardScreenStopsWhenNotVetted(t *testing.T) {
 	a, _ = press(t, a, "g")
 	if a.onboard.phase != obPlan || calls != 0 {
 		t.Errorf("an unvetted member must never be set up (phase %v, %d changes)", a.onboard.phase, calls)
+	}
+}
+
+func TestOnboardScreenOverride(t *testing.T) {
+	calls := 0
+	deps := onboardDeps(t, false, &calls)
+	a := tall(t, New(deps))
+	a, _ = a.openOnboard()
+	a = typeText(t, a, "alex@example.com")
+	a, cmd := press(t, a, "enter")
+	a = settle(t, a, cmd)
+	if !strings.Contains(a.View().Content, "override") {
+		t.Fatal("a not-vetted member should offer an override")
+	}
+
+	a, _ = press(t, a, "o")
+	if a.onboard.phase != obReason {
+		t.Fatalf("o should ask for a reason (phase %v)", a.onboard.phase)
+	}
+	a = typeText(t, a, "ok")
+	a, cmd = press(t, a, "enter")
+	if cmd != nil || a.onboard.err == "" {
+		t.Fatal("a too-short reason must be refused")
+	}
+	a = typeText(t, a, " - paid at the meeting")
+	a, cmd = press(t, a, "enter")
+	a = settle(t, a, cmd)
+	if !a.onboard.plan.Ready || a.onboard.plan.Override != "ok - paid at the meeting" {
+		t.Fatalf("override plan = %+v", a.onboard.plan)
+	}
+	view := a.View().Content
+	for _, want := range []string{"Sheet overridden", "Override reason: ok - paid at the meeting", "Override recorded"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("override screen is missing %q", want)
+		}
+	}
+	if calls != 0 {
+		t.Error("an override must not change anything by itself")
+	}
+	path, _ := deps.ConfigPath()
+	lines, _ := activity.Open(filepath.Join(filepath.Dir(path), activity.FileName)).Recent(5)
+	if len(lines) != 1 || !strings.Contains(lines[0], "Override by the webmaster") || !strings.Contains(lines[0], "Reason: ok - paid at the meeting") {
+		t.Errorf("activity log = %v", lines)
+	}
+}
+
+func TestFillsTheWindow(t *testing.T) {
+	for _, size := range []tea.WindowSizeMsg{{Width: 60, Height: 20}, {Width: 100, Height: 30}, {Width: 220, Height: 60}} {
+		a := New(testDeps())
+		m, _ := a.Update(size)
+		a = m.(App)
+		lines := strings.Split(a.View().Content, "\n")
+		if len(lines) != size.Height {
+			t.Errorf("%dx%d: drew %d lines, want the full height", size.Width, size.Height, len(lines))
+		}
+		widest := 0
+		for _, l := range lines {
+			widest = max(widest, lipgloss.Width(l))
+		}
+		if widest != size.Width-1 {
+			t.Errorf("%dx%d: widest line is %d, want the window less the right margin", size.Width, size.Height, widest)
+		}
+	}
+}
+
+func TestLongContentScrolls(t *testing.T) {
+	a := New(testDeps())
+	m, _ := a.Update(tea.WindowSizeMsg{Width: 80, Height: 16})
+	a = m.(App)
+	a, _ = press(t, a, "?")
+	if a.maxScroll() == 0 {
+		t.Fatal("help should be taller than a 16-line window")
+	}
+	if !strings.Contains(a.View().Content, "more below") {
+		t.Error("no 'more below' marker")
+	}
+	a, _ = press(t, a, "down")
+	if a.scroll != 1 {
+		t.Errorf("down: scroll = %d", a.scroll)
+	}
+	for i := 0; i < 100; i++ {
+		a, _ = press(t, a, "down")
+	}
+	if a.scroll != a.maxScroll() || !strings.Contains(a.View().Content, "more above") {
+		t.Errorf("scrolled past the end: %d of %d", a.scroll, a.maxScroll())
+	}
+	a, _ = press(t, a, "esc")
+	a, _ = press(t, a, "?")
+	if a.scroll != 0 {
+		t.Error("a screen should open at the top")
+	}
+}
+
+// rosterSheet is a pretend membership sheet that can list everyone.
+type rosterSheet struct{ fakeSheet }
+
+func (rosterSheet) AllMembers(context.Context) ([]connectors.DirectoryEntry, error) {
+	ok := connectors.MemberStatus{State: connectors.StateOK, Summary: "Vetted."}
+	return []connectors.DirectoryEntry{
+		{Person: connectors.Person{Email: "amy@example.com", FirstName: "Amy", LastName: "Able", Row: 2}, Status: ok},
+		{Person: connectors.Person{Email: "ned@example.com", FirstName: "Ned", LastName: "New", Row: 3},
+			Status: connectors.MemberStatus{State: connectors.StatePending, Summary: "On the list as New."}},
+	}, nil
+}
+
+func TestMembersScreen(t *testing.T) {
+	calls := 0
+	deps := onboardDeps(t, true, &calls)
+	deps.Connectors = func(*config.Config, secrets.Store) []connectors.Connector {
+		return []connectors.Connector{rosterSheet{fakeSheet{connectors.MemberStatus{State: connectors.StateOK, Summary: "Vetted."}}},
+			fakeList{&calls}}
+	}
+	a := tall(t, New(deps))
+	a, cmd := press(t, a, "1")
+	if a.screen != screenMembers || !a.members.loading {
+		t.Fatal("1 should open Members and start checking everyone")
+	}
+	a = settle(t, a, cmd)
+	view := a.View().Content
+	for _, want := range []string{"Needs setup 1", "Not ready 1", "Everyone 2", "Amy Able", "Mail: Not on the list."} {
+		if !strings.Contains(view, want) {
+			t.Errorf("members screen is missing %q", want)
+		}
+	}
+	if strings.Contains(view, "Ned New") {
+		t.Error("Ned isn't vetted, so he shouldn't be under Needs setup")
+	}
+
+	// → moves through the groups; Not ready has Ned.
+	for i := 0; i < 3; i++ {
+		a, _ = press(t, a, "right")
+	}
+	if !strings.Contains(a.View().Content, "Ned New") {
+		t.Errorf("Not ready tab should list Ned:\n%s", a.View().Content)
+	}
+
+	// enter opens onboarding for the highlighted member; esc comes back.
+	a, _ = press(t, a, "left")
+	a, _ = press(t, a, "left")
+	a, _ = press(t, a, "left")
+	a, cmd = press(t, a, "enter")
+	if a.screen != screenOnboard || a.onboard.phase != obPlanning {
+		t.Fatalf("enter should plan Amy's onboarding (screen %v phase %v)", a.screen, a.onboard.phase)
+	}
+	a = settle(t, a, cmd)
+	if a.onboard.plan == nil || a.onboard.plan.Person.Email != "amy@example.com" {
+		t.Fatalf("plan = %+v", a.onboard.plan)
+	}
+	a, _ = press(t, a, "esc")
+	if a.screen != screenMembers {
+		t.Errorf("esc from onboarding should return to Members, got %v", a.screen)
+	}
+	if calls != 0 {
+		t.Error("opening members and plans must not change anything")
 	}
 }

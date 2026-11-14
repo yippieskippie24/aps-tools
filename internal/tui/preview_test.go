@@ -4,7 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/doctor"
 	"github.com/yippieskippie24/aps-tools/internal/onboard"
+	"github.com/yippieskippie24/aps-tools/internal/roster"
 )
 
 // TestWritePreviews saves each screen as a text file with colours, for
@@ -114,9 +117,57 @@ func TestWritePreviews(t *testing.T) {
 		}
 		write("onboard-not-ready", notReady)
 
+		why := notReady
+		why.onboard.phase = obReason
+		why.onboard.reason.SetValue("Paid at the meeting; the chair will update the sheet")
+		why.onboard.reason.Focus()
+		write("onboard-override", why)
+
+		write("members", membersPreview(a))
+		big := a
+		m, _ = big.Update(tea.WindowSizeMsg{Width: 130, Height: 30})
+		write("members-wide", membersPreview(m.(App)))
+
 		help := a
 		help.screen = screenHelp
 		m, _ = help.Update(tea.WindowSizeMsg{Width: 84, Height: 34})
 		write("help", m.(App))
 	}
+}
+
+// membersPreview fills the Members screen with made-up members.
+func membersPreview(a App) App {
+	st := func(state connectors.State, summary string) connectors.MemberStatus {
+		return connectors.MemberStatus{State: state, Summary: summary}
+	}
+	ok := st(connectors.StateOK, "Fine.")
+	sys := func(mail, jira, forum connectors.MemberStatus) []check.SystemResult {
+		return []check.SystemResult{
+			{System: "Mailing list (Cloudflare)", MemberStatus: mail},
+			{System: "Jira Service Management", MemberStatus: jira},
+			{System: "Discourse forum", MemberStatus: forum},
+		}
+	}
+	entry := func(first, last string, g roster.Group, sheet connectors.MemberStatus, systems []check.SystemResult) roster.Entry {
+		return roster.Entry{Person: connectors.Person{FirstName: first, LastName: last, Email: strings.ToLower(first) + "." + strings.ToLower(last) + "@example.com"},
+			Sheet: sheet, Systems: systems, Group: g}
+	}
+	noForum := st(connectors.StateMissing, "No forum account, and no invite found.")
+	unverified := st(connectors.StatePending, "Added 46 days ago, but they haven't clicked Cloudflare's verification email.")
+	r := roster.Roster{
+		Directory: "Membership Google Sheet",
+		Systems:   []string{"Mailing list (Cloudflare)", "Jira Service Management", "Discourse forum"},
+		CheckedAt: time.Now().Add(-3 * time.Minute),
+		Entries: []roster.Entry{
+			entry("Alex", "Example", roster.NeedsSetup, ok, sys(unverified, st(connectors.StateMissing, "Not a customer on the service desk."), noForum)),
+			entry("Blair", "Sample", roster.NeedsSetup, ok, sys(ok, ok, noForum)),
+			entry("Casey", "Test", roster.NeedsSetup, connectors.MemberStatus{State: connectors.StateOK, Warning: "Member Status is \"Not Active\", not Active."}, sys(st(connectors.StateMissing, "Not a destination address."), ok, noForum)),
+			entry("Drew", "Demo", roster.Waiting, ok, sys(unverified, ok, ok)),
+			entry("Emery", "Placeholder", roster.NotReady, st(connectors.StatePending, "On the list, but \"App vetted\" isn't marked yet."), sys(ok, ok, ok)),
+			entry("Frankie", "Fixture", roster.SetUp, ok, sys(ok, ok, ok)),
+		},
+	}
+	a.screen = screenMembers
+	a.members = membersView{roster: &r}
+	return a
 }

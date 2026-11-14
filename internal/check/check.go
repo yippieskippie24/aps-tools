@@ -158,6 +158,9 @@ func (r Report) PlainText() string {
 		for _, d := range res.Details {
 			fmt.Fprintf(&b, "    %s\n", d)
 		}
+		if res.Warning != "" {
+			fmt.Fprintf(&b, "    ! %s\n", res.Warning)
+		}
 		if res.Fix != "" {
 			fmt.Fprintf(&b, "    → %s\n", res.Fix)
 		}

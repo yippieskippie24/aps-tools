@@ -30,6 +30,7 @@ const (
 	obInput    obPhase = iota // typing the member's email
 	obPlanning                // checking every system
 	obPlan                    // showing the plan
+	obReason                  // typing the reason for overriding the sheet
 	obConfirm                 // "Make these changes?"
 	obRunning                 // running the tool's steps, one at a time
 	obDone                    // finished running
@@ -38,6 +39,7 @@ const (
 // onboarding holds the state of the Onboard a new member screen.
 type onboarding struct {
 	input   textinput.Model
+	reason  textinput.Model // the reason for an override
 	phase   obPhase
 	err     string        // problem with the input or with planning
 	plan    *onboard.Plan // nil until a plan has been made
@@ -50,7 +52,11 @@ func newOnboarding(s styles) onboarding {
 	in.Prompt = "› "
 	in.Placeholder = "name@example.com"
 	in.CharLimit = 254
-	ob := onboarding{input: in, current: -1}
+	why := textinput.New()
+	why.Prompt = "› "
+	why.Placeholder = "e.g. Paid at the meeting; the chair will update the sheet"
+	why.CharLimit = 300
+	ob := onboarding{input: in, reason: why, current: -1}
 	ob.restyle(s)
 	return ob
 }
@@ -63,6 +69,7 @@ func (ob *onboarding) restyle(s styles) {
 	st.Focused.Placeholder = lipgloss.NewStyle().Foreground(s.p.subtle)
 	st.Blurred = st.Focused
 	ob.input.SetStyles(st)
+	ob.reason.SetStyles(st)
 }
 
 // planDoneMsg carries a finished plan (or why planning failed).
@@ -92,15 +99,31 @@ func (a App) openOnboard() (App, tea.Cmd) {
 // startPlan validates the email and prepares the plan in the background.
 // Preparing is read-only.
 func (a App) startPlan(email string) (App, tea.Cmd) {
+	return a.startPlanWith(email, "")
+}
+
+// startPlanWith is startPlan, overriding the membership sheet for reason
+// when it isn't empty. Pressing enter on the reason is the webmaster's
+// confirmation, so the override is recorded in the activity log as soon as
+// the plan is ready (before anything can change).
+func (a App) startPlanWith(email, reason string) (App, tea.Cmd) {
 	if _, err := check.NormalizeEmail(email); err != nil {
 		a.onboard.err = "That doesn't look like an email address — try name@example.com."
 		return a, nil
 	}
-	a.onboard.err, a.onboard.notice, a.onboard.plan = "", "", nil
+	a.onboard.err, a.onboard.notice = "", ""
+	if reason == "" {
+		a.onboard.reason.SetValue("") // an ordinary plan, not an override
+		a.onboard.plan = nil
+	}
 	a.onboard.phase = obPlanning
 	a.onboard.input.Blur()
 	deps := a.deps
+	log, logErr := a.activityLog()
 	run := func() tea.Msg {
+		if reason != "" && logErr != nil {
+			return planDoneMsg{err: logErr} // an override must be recorded
+		}
 		cfg, err := deps.LoadConfig()
 		if errors.Is(err, config.ErrNotFound) {
 			cfg, err = &config.Config{}, nil
@@ -108,7 +131,15 @@ func (a App) startPlan(email string) (App, tea.Cmd) {
 		if err != nil {
 			return planDoneMsg{err: err}
 		}
-		p, err := onboard.Prepare(context.Background(), deps.Connectors(cfg, deps.Secrets(cfg)), email)
+		conns := deps.Connectors(cfg, deps.Secrets(cfg))
+		if reason == "" {
+			p, err := onboard.Prepare(context.Background(), conns, email)
+			return planDoneMsg{plan: p, err: err}
+		}
+		p, err := onboard.PrepareOverride(context.Background(), conns, email, reason)
+		if err == nil && p.Override != "" {
+			err = p.LogOverride(log)
+		}
 		return planDoneMsg{plan: p, err: err}
 	}
 	return a, tea.Batch(run, spinTick())
@@ -155,11 +186,19 @@ func (a App) onboardMsg(msg tea.Msg) (App, tea.Cmd, bool) {
 	ob := &a.onboard
 	switch msg := msg.(type) {
 	case planDoneMsg:
+		if msg.err != nil && ob.plan != nil && ob.reason.Value() != "" {
+			// An override couldn't be planned or recorded: stay on the plan.
+			ob.phase, ob.notice = obPlan, "Override not made: "+msg.err.Error()
+			return a, nil, true
+		}
 		if msg.err != nil {
 			ob.phase, ob.err = obInput, msg.err.Error()
 			return a, ob.input.Focus(), true
 		}
 		ob.plan, ob.phase = &msg.plan, obPlan
+		if msg.plan.Override != "" {
+			ob.notice = "Override recorded in the activity log. Ask the membership chair to update the sheet."
+		}
 		return a, nil, true
 
 	case stepDoneMsg:
@@ -176,6 +215,7 @@ func (a App) onboardMsg(msg tea.Msg) (App, tea.Cmd, bool) {
 			return a, a.runStep(next, false), true
 		}
 		ob.phase, ob.current = obDone, -1
+		a.scroll = toBottom // the result notice is at the end
 		if ob.notice == "" {
 			ob.notice = "Recorded in the activity log: " + msg.logPath
 		}
@@ -199,7 +239,7 @@ func (a App) updateOnboard(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case obInput:
 		switch key {
 		case "esc":
-			a.screen = screenHome
+			a.screen = a.back
 			return a, nil
 		case "enter":
 			return a.startPlan(ob.input.Value())
@@ -211,12 +251,31 @@ func (a App) updateOnboard(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case obPlanning:
 		if key == "esc" {
-			a.screen = screenHome // planning is read-only; let it finish quietly
+			a.screen = a.back // planning is read-only; let it finish quietly
 		}
 		return a, nil
 
 	case obRunning:
 		return a, nil // changes are being made: stay until they finish
+
+	case obReason:
+		switch key {
+		case "esc":
+			ob.phase, ob.err = obPlan, ""
+			ob.notice = "Override cancelled: nothing was changed or recorded."
+			return a, nil
+		case "enter":
+			if err := onboard.CheckReason(ob.reason.Value()); err != nil {
+				ob.err = "Please give a reason of at least a few words (it's kept as the record of this override)."
+				return a, nil
+			}
+			ob.reason.Blur()
+			return a.startPlanWith(ob.plan.Person.Email, ob.reason.Value())
+		}
+		var cmd tea.Cmd
+		ob.reason, cmd = ob.reason.Update(msg)
+		ob.err = ""
+		return a, cmd
 
 	case obConfirm:
 		switch key {
@@ -238,7 +297,11 @@ func (a App) updateOnboard(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Looking at a plan (or the result of running it).
 	switch key {
 	case "esc", "q":
-		a.screen = screenHome
+		a.screen = a.back
+		if a.back == screenMembers && ob.phase == obDone {
+			// Changes were made: re-check them so the list is current.
+			return a, a.refreshMember(ob.plan.Person.Email)
+		}
 	case "n", "/":
 		return a.openOnboard()
 	case "r":
@@ -246,6 +309,14 @@ func (a App) updateOnboard(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "g":
 		if ob.phase == obPlan && ob.plan.Ready && ob.plan.Next() >= 0 {
 			ob.phase, ob.notice = obConfirm, ""
+			a.scroll = toBottom // the question is under the plan
+		}
+	case "o":
+		if ob.phase == obPlan && ob.plan.CanOverride() {
+			ob.phase, ob.notice, ob.err = obReason, "", ""
+			a.scroll = toBottom // the reason box is under the plan
+			ob.reason.SetValue("")
+			return a, ob.reason.Focus()
 		}
 	case "c":
 		text := ob.plan.PlainText()
@@ -268,11 +339,16 @@ func (a App) onboardKeys() string {
 		return "  " + a.styles.subtle.Render("Making changes — please wait…")
 	case obConfirm:
 		return a.keyHelp("y", "go", "n", "cancel")
+	case obReason:
+		return a.keyHelp("enter", "override and record it", "esc", "cancel")
 	case obDone:
 		return a.keyHelp("r", "check again", "c", "copy", "n", "next member", "esc", "back")
 	}
 	if ob.plan != nil && ob.plan.Ready && ob.plan.Next() >= 0 {
 		return a.keyHelp("g", "go", "c", "copy checklist", "r", "re-check", "n", "new", "esc", "back")
+	}
+	if ob.plan != nil && ob.plan.CanOverride() {
+		return a.keyHelp("o", "override", "r", "re-check", "n", "new", "esc", "back")
 	}
 	return a.keyHelp("c", "copy checklist", "r", "re-check", "n", "new", "esc", "back")
 }
@@ -299,6 +375,17 @@ func (a App) viewOnboard(w int) string {
 		b.WriteString(spinner + " " + s.subtle.Render("Checking "+strings.TrimSpace(ob.input.Value())+" in every system… (read-only)"))
 	default:
 		b.WriteString(a.viewPlan(*ob.plan, inner))
+		if ob.phase == obReason {
+			box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(s.p.warn).Padding(0, 1).Width(inner)
+			ob.reason.SetWidth(inner - 8)
+			body := s.text.Bold(true).Render("Override the membership sheet?") + "\n" +
+				s.subtle.Width(inner-4).Render("Only if you know they should be set up anyway. Your reason is recorded in the activity log (and on the sheet, in a later version).") + "\n\n" +
+				ob.reason.View()
+			if ob.err != "" {
+				body += "\n" + lipgloss.NewStyle().Foreground(s.p.fail).Width(inner-4).Render(ob.err)
+			}
+			b.WriteString("\n\n" + box.Render(body))
+		}
 		if ob.phase == obConfirm {
 			n := ob.plan.Count(onboard.Auto)
 			q := "Make " + changeCount(n) + " for " + ob.plan.Who() + "?"
@@ -309,7 +396,7 @@ func (a App) viewOnboard(w int) string {
 			b.WriteString("\n\n" + s.statusLine.Width(inner).Render(ob.notice))
 		}
 	}
-	return s.card.Width(w).Render(b.String())
+	return b.String()
 }
 
 // kindColor picks the colour for a step's kind.
@@ -376,6 +463,9 @@ func (a App) viewPlan(p onboard.Plan, inner int) string {
 		rows = append(rows, left+strings.Repeat(" ", gap)+right)
 		if st.Now != "" {
 			rows = append(rows, indent.Render(s.subtle.Width(inner-2).Render(st.Now)))
+		}
+		if st.Warning != "" {
+			rows = append(rows, indent.Render(a.warningLine(st.Warning, inner-2)))
 		}
 		switch st.Outcome {
 		case onboard.Succeeded:

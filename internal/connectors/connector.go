@@ -88,6 +88,11 @@ type MemberStatus struct {
 	Details []string
 	// Fix tells the webmaster what to do next. Empty when nothing is needed.
 	Fix string
+	// Warning is something to double-check even though the state itself is
+	// fine, e.g. a vetted member whose Member Status isn't Active. Shown
+	// with a "!" in the check report and the onboarding plan. The tool
+	// doesn't act on it: the webmaster decides.
+	Warning string
 }
 
 // JoinPlain joins items as "a, b and c", e.g. for listing what a
@@ -153,4 +158,29 @@ type Onboarder interface {
 	// that's already done, so running it twice is harmless. It returns a
 	// short description of what it changed, for the activity log.
 	Onboard(ctx context.Context, p Person) (string, error)
+}
+
+// BulkChecker is implemented by a connector that can check many members at
+// once far more cheaply than one by one, usually by reading its whole list
+// of people in a few requests. The Members screen uses it. Same rules as
+// CheckMember: READ-ONLY, and "not found" is a result, not an error.
+type BulkChecker interface {
+	Connector
+	// CheckMembers returns a status for every email asked about, keyed by
+	// the email as given.
+	CheckMembers(ctx context.Context, emails []string) (map[string]MemberStatus, error)
+}
+
+// DirectoryEntry is one member on the membership list, with the list's
+// verdict on them (the onboarding gate).
+type DirectoryEntry struct {
+	Person Person
+	Status MemberStatus
+}
+
+// MemberLister is implemented by the membership list connector, to list
+// everyone on it (for the Members screen). READ-ONLY.
+type MemberLister interface {
+	Connector
+	AllMembers(ctx context.Context) ([]DirectoryEntry, error)
 }

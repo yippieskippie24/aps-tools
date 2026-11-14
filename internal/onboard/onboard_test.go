@@ -131,7 +131,7 @@ func TestPlanSteps(t *testing.T) {
 		kind   Kind
 		text   string // in Now or Action
 	}{
-		{"Membership sheet", Done, "(row 42)"},
+		{"Membership sheet", Done, "Row 42: on the membership list"},
 		{"Mailing list", Auto, "Add them to news@"},
 		{"Jira", Done, "Customer."},
 		{"Forum", Manual, "Invite them."},
@@ -207,9 +207,77 @@ func TestRun(t *testing.T) {
 func TestNothingToDo(t *testing.T) {
 	done := &fake{name: "Jira", status: connectors.MemberStatus{State: connectors.StateOK}}
 	p, _ := Prepare(context.Background(), []connectors.Connector{vettedSheet(), done}, "alex@example.com")
-	// Drop the welcome email step to see the "already set up" wording.
-	p.Steps = p.Steps[:2]
+	// An existing member set up everywhere doesn't need a welcome email.
 	if p.Summary() != "Nothing to do: already set up everywhere." {
 		t.Errorf("Summary() = %q", p.Summary())
+	}
+	if w := p.Steps[2]; w.System != "Welcome email" || w.Kind != Done || !strings.Contains(w.Now, "Not needed") {
+		t.Errorf("welcome email step = %+v", w)
+	}
+}
+
+func TestWarningsAreShownNotBlocking(t *testing.T) {
+	sheet := vettedSheet()
+	sheet.status.Warning = `Member Status is "Not Active", not Active.`
+	list := &fakeOnboarder{fake: fake{name: "Mailing list", status: connectors.MemberStatus{State: connectors.StateMissing}}, plan: "Add them"}
+	p, _ := Prepare(context.Background(), []connectors.Connector{sheet, list}, "alex@example.com")
+	if !p.Ready || p.Steps[0].Warning == "" || p.Count(Auto) != 1 {
+		t.Fatalf("a warning must not stop onboarding: %+v", p)
+	}
+	if !strings.Contains(p.Summary(), "1 warning to check") || !strings.Contains(p.PlainText(), `! Member Status is "Not Active"`) {
+		t.Errorf("warning not shown:\n%s", p.PlainText())
+	}
+}
+
+func TestOverride(t *testing.T) {
+	sheet := vettedSheet()
+	sheet.status = connectors.MemberStatus{State: connectors.StatePending, Summary: "On the list, but \"App vetted\" isn't marked yet."}
+	list := &fakeOnboarder{fake: fake{name: "Mailing list", status: connectors.MemberStatus{State: connectors.StateMissing}}, plan: "Add them"}
+	conns := []connectors.Connector{sheet, list}
+
+	if _, err := PrepareOverride(context.Background(), conns, "alex@example.com", " too short "); !errors.Is(err, ErrNoReason) {
+		t.Errorf("short reason: %v", err)
+	}
+	p, err := PrepareOverride(context.Background(), conns, "alex@example.com", "  Paid at the meeting; chair to update  ")
+	if err != nil || !p.Ready || p.Override != "Paid at the meeting; chair to update" {
+		t.Fatalf("override: %+v %v", p, err)
+	}
+	gate := p.Steps[0]
+	if gate.Kind != Manual || !strings.Contains(gate.Now, "Overridden by you") || !strings.Contains(gate.Warning, "Paid at the meeting") {
+		t.Errorf("gate step = %+v", gate)
+	}
+	if !strings.HasPrefix(p.Summary(), "Sheet overridden. ") || !strings.Contains(p.PlainText(), "Reason: Paid at the meeting") {
+		t.Errorf("override not shown:\n%s", p.PlainText())
+	}
+
+	log := activity.Open(filepath.Join(t.TempDir(), "activity.log"))
+	if err := p.LogOverride(log); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Run(context.Background(), log, nil); err != nil || list.calls != 1 {
+		t.Fatalf("run after override: %v, %d calls", err, list.calls)
+	}
+	lines, _ := log.Recent(10)
+	if len(lines) == 0 || !strings.Contains(lines[0], "Membership sheet\tok\tOverride by the webmaster: On the list, but \"App vetted\" isn't marked yet. Reason: Paid at the meeting; chair to update") {
+		t.Errorf("override not logged first: %v", lines)
+	}
+
+	// A plain Prepare never overrides.
+	if p, _ := Prepare(context.Background(), conns, "alex@example.com"); p.Ready || !p.CanOverride() {
+		t.Errorf("Prepare without override: ready=%v canOverride=%v", p.Ready, p.CanOverride())
+	}
+}
+
+func TestNoOverrideWhenTheSheetCantBeRead(t *testing.T) {
+	sheet := vettedSheet()
+	sheet.missing = []string{"a Google service account key"}
+	p, err := PrepareOverride(context.Background(), []connectors.Connector{sheet}, "alex@example.com", "Paid at the meeting")
+	if err != nil || p.Ready || p.CanOverride() || p.Override != "" {
+		t.Errorf("an unreadable sheet must be fixed, not overridden: %+v %v", p, err)
+	}
+	// Someone the sheet already passes needs no override.
+	p, _ = PrepareOverride(context.Background(), []connectors.Connector{vettedSheet()}, "alex@example.com", "Paid at the meeting")
+	if !p.Ready || p.Override != "" {
+		t.Errorf("vetted member: %+v", p)
 	}
 }
