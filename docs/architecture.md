@@ -20,8 +20,8 @@
                          │              │
             ┌────────────▼───┐   ┌──────▼─────────┐
             │ internal/tui   │   │ internal/doctor│   shared logic used by
-            │ (screens)      │──▶│ (and later:    │◀─ both the TUI and CLI
-            └────────────────┘   │  check, onboard)│
+            │ (screens)      │──▶│ check, onboard │◀─ both the TUI and CLI
+            └────────────────┘   │ activity       │
                                  └──────┬─────────┘
                                         │ uses
                         ┌───────────────▼────────────────┐
@@ -38,7 +38,7 @@
 ```
 
 **Rule of thumb:** screens (`tui`) and commands (`cli`) contain *no business logic*. They call
-shared packages (`doctor`, `check`, and later `onboard`), which call connectors. That way the
+shared packages (`doctor`, `check`, `onboard`), which call connectors. That way the
 TUI and the plain commands always behave the same.
 
 ## Folder guide
@@ -46,10 +46,12 @@ TUI and the plain commands always behave the same.
 | Folder | What lives here |
 |---|---|
 | `cmd/aps-tools/` | The program's entry point. Tiny — it just starts `internal/cli`. |
-| `internal/cli/` | One file per command (`check.go`, `doctor.go`, `config.go`, `version.go`, `cloudflare.go`, `discourse.go` and `sheet.go` for the `discover` commands). `setup.go` holds shared setup code (including asking for API keys); each system's guided setup is in `setup_<system>.go`. `root.go` opens the TUI when no command is given. |
-| `internal/tui/` | The interactive app. `app.go` is the main model and screen switching; `home.go` the menu; `checkscreen.go` "Check a member"; `screens.go` Test connections and Help; `styles.go` holds every colour. |
+| `internal/cli/` | One file per command (`check.go`, `doctor.go`, `config.go`, `version.go`, `cloudflare.go`, `discourse.go` and `sheet.go` for the `discover` commands, `onboard.go` for `onboard` and `log`). `setup.go` holds shared setup code (including asking for API keys); each system's guided setup is in `setup_<system>.go`. `root.go` opens the TUI when no command is given. |
+| `internal/tui/` | The interactive app. `app.go` is the main model and screen switching; `home.go` the menu; `checkscreen.go` "Check a member"; `onboardscreen.go` "Onboard a new member"; `screens.go` Test connections and Help; `styles.go` holds every colour. |
 | `internal/check/` | Checks one member against every connector at once and builds the report (also its plain-text copy). |
 | `internal/doctor/` | Checks the tool's own setup and every connector's connection. |
+| `internal/onboard/` | Guided onboarding: the vetting gate, the plan (what each system needs), and running the tool's own steps. See [decision 0011](decisions/0011-onboarding-plan-then-run.md). |
+| `internal/activity/` | The activity log: one line per change the tool makes, in `activity.log` next to the settings file. |
 | `internal/connectors/` | The `Connector` interface and member states (`connector.go`) and the registry (`registry.go`). Each system gets its own sub-folder, e.g. `jira/`, `cloudflare/`. `all/` switches every connector on, in display order. In `cloudflare/`, `lists.go` reads the mailing lists exactly as the list Worker does. Keep the two in step. In `discourse/`, `userkey.go` does the approve-in-browser hand-shake for the forum key. In `sheet/`, `google.go` signs in to Google as the service account and `columns.go` finds columns by header text. `vetting.go` decides who counts as vetted, including members who joined before App vetted was used. |
 | `internal/config/` | Loads and saves `config.toml`. `template.go` is the file's layout with a comment on every setting; saving always goes through it, so comments are never lost. |
 | `internal/secrets/` | Where API keys come from: the macOS Keychain (`secrets.go`) or 1Password via the `op` tool (`onepassword.go`). All key names are defined in `secrets.go`. |
@@ -75,7 +77,15 @@ same `Connector` interface (see `internal/connectors/connector.go`):
 | `TestConnection(ctx)` | Makes a harmless read-only call to prove the keys work. |
 | `CheckMember(ctx, email)` | Read-only: is this member set up here? Returns a `MemberStatus` (state, summary, details, and what to do). |
 
-A method for *setting up* a member is added in Phase 2.
+Two optional interfaces, in the same file, are for onboarding:
+
+| Interface | Who implements it | Purpose |
+|---|---|---|
+| `Directory` | The membership sheet | `LookupMember`: the check plus the member's name. Onboarding's gate: only a vetted member goes further. |
+| `Onboarder` | Each system, as its Phase 2 step is built | `PlanOnboard` says what it would do (changing nothing). `Onboard` does it, checking again first so it's safe to repeat. |
+
+A connector without `Onboarder` still works: onboarding lists its step as "do this by hand",
+using the check's "what to do" line.
 
 ### Member states
 
@@ -107,5 +117,8 @@ the check itself couldn't be done.
 6. Write a setup guide in `docs/setup/<id>.md` and link it from [setup/README.md](setup/README.md)
    and [handover.md](handover.md).
 7. Update the systems table in [design.md](design.md).
+8. When it can set members up, implement `Onboarder` (see above). Follow the safety rules:
+   preview first, check before acting, test with fake servers, and say what changed so it can be
+   logged.
 
 To **remove** a system, reverse these steps.

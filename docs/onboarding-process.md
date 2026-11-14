@@ -44,7 +44,22 @@ their account. Invites expire after 90 days; if one expires, send a new one. APS
 member group, and new accounts don't need approval. The exact sign-up settings are summarised by `aps-tools discourse discover`. See
 [setup/discourse.md](setup/discourse.md).
 
-**5. Welcome email.** TBD — the standard template will be written in Phase 2.
+**5. Welcome email.** Sent from your own mail. A draft is in the
+[Phase 2 plan](plans/phase-2-onboarding.md#6-welcome-email-draft). The tool will fill it in for you
+in a later version.
+
+## Onboarding with the tool
+
+Run `aps-tools onboard alex@example.com`, or choose **2 Onboard a new member** in the app. It:
+1. stops unless the member is vetted on the membership sheet;
+2. checks every system and shows the plan: ✓ nothing to do, + the tool will do it, □ do it by
+   hand, … waiting on the member, ? couldn't check;
+3. changes nothing until you say **Go** (`--dry-run` just shows the plan);
+4. records every change in the activity log (`aps-tools log`).
+
+For now the tool can't change any system itself yet, so the plan is a checklist of the □ steps
+above. Each system's step becomes automatic as it's built. Running it again is always safe: it
+only lists what's still missing.
 
 ## "Am I set up correctly?" — checking a member by hand
 

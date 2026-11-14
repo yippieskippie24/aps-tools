@@ -64,6 +64,7 @@ To update later: `brew upgrade aps-tools`.
 |---|---|---|
 | Settings (URLs, IDs) | `~/.config/aps-tools/config.toml` — run `aps-tools config path` to see it | Yes — no secrets in it |
 | API keys and tokens | macOS **Keychain Access** app (search `aps-tools`), **or** your 1Password, depending on `aps-tools setup secrets` | **No** |
+| Activity log (every change the tool made) | `~/.config/aps-tools/activity.log`. Run `aps-tools log` for the latest, or open it in TextEdit | **No**: it names members. Hand it over to the next webmaster, but don't post it |
 
 ## 5. Getting help
 

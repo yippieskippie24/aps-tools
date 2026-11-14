@@ -207,7 +207,7 @@ func (a App) viewReport(r check.Report, inner int) string {
 			rows = append(rows, indent.Render(s.subtle.Width(inner-2).Render(d)))
 		}
 		if res.Fix != "" {
-			rows = append(rows, indent.Render(s.fixArrow.Render("→ ")+s.text.Width(inner-4).Render(res.Fix)))
+			rows = append(rows, indent.Render(lipgloss.JoinHorizontal(lipgloss.Top, s.fixArrow.Render("→ "), s.text.Width(inner-4).Render(res.Fix))))
 		}
 		rows = append(rows, "")
 	}

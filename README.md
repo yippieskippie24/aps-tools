@@ -4,7 +4,7 @@ A terminal app that helps the APS Webmaster set up and check member access acros
 system (membership sheet, mailing list, Jira service desk, Discourse) from one place.
 
 > **Status:** Phase 1 (read-only member checks across all four systems) is complete. Phase 2
-> (guided onboarding) is next. See the [roadmap](docs/design.md#4-features-and-phases).
+> (guided onboarding) is under way: `aps-tools onboard` plans each onboarding and lists what to do. See the [roadmap](docs/design.md#4-features-and-phases).
 
 ## Install
 
@@ -27,6 +27,8 @@ go install github.com/yippieskippie24/aps-tools/cmd/aps-tools@latest
 ```bash
 aps-tools                          # open the interactive app
 aps-tools check alex@example.com   # check a member in every system
+aps-tools onboard alex@example.com # plan (and do) a new member's setup
+aps-tools log                      # see what the tool has changed
 aps-tools setup                    # connect APS systems (guided)
 aps-tools doctor                   # check that everything is connected
 aps-tools --help                   # list every command

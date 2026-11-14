@@ -9,8 +9,9 @@ import "context"
 
 // Connector is the common shape every outside system must have.
 //
-// A method for setting a member up (Phase 2) will be added here later, and
-// every connector will implement it.
+// Setting a member up (Phase 2) is optional: a connector that can do it also
+// implements Onboarder, below. Until it does, onboarding lists that system as
+// a step to do by hand.
 type Connector interface {
 	// ID is a short, lowercase machine name such as "jira". It is used in
 	// settings and commands, so never change it once released.
@@ -103,4 +104,53 @@ func JoinPlain(items []string) string {
 		s += ", " + it
 	}
 	return s + " and " + items[len(items)-1]
+}
+
+// Person is a member as the membership list knows them. Onboarding reads
+// their name from the list, so the webmaster never retypes it.
+type Person struct {
+	// Email is the address onboarding was started with (lower-case).
+	Email string
+	// FirstName and LastName come from the membership list; either may be
+	// blank.
+	FirstName string
+	LastName  string
+	// Row is where they are on the membership list (1 = first row), for
+	// showing the webmaster. 0 if unknown.
+	Row int
+}
+
+// Name is "First Last", or "" if neither is known.
+func (p Person) Name() string {
+	switch {
+	case p.FirstName == "":
+		return p.LastName
+	case p.LastName == "":
+		return p.FirstName
+	}
+	return p.FirstName + " " + p.LastName
+}
+
+// Directory is implemented by the connector that holds the master member
+// list (the membership Google Sheet). Onboarding asks it first, as a gate:
+// only someone it reports as StateOK (vetted) is set up anywhere else.
+type Directory interface {
+	Connector
+	// LookupMember is CheckMember plus who the member is. READ-ONLY.
+	LookupMember(ctx context.Context, email string) (Person, MemberStatus, error)
+}
+
+// Onboarder is implemented by a connector that can set a member up in its
+// system (Phase 2). It must follow the project's safety rules: preview
+// first, check before acting, and never repeat or undo anything.
+type Onboarder interface {
+	Connector
+	// PlanOnboard says what Onboard would do, given what CheckMember just
+	// found, as a short line such as "Add them to the news@ list". It must
+	// not change anything. Return "" when there's nothing to do.
+	PlanOnboard(ctx context.Context, p Person, current MemberStatus) (string, error)
+	// Onboard makes the change. It must check again first and skip anything
+	// that's already done, so running it twice is harmless. It returns a
+	// short description of what it changed, for the activity log.
+	Onboard(ctx context.Context, p Person) (string, error)
 }

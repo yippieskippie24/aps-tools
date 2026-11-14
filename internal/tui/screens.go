@@ -102,6 +102,8 @@ func (a App) viewHelp(w int) string {
 		s.text.Render("Settings   ") + s.subtle.Render("~/.config/aps-tools/config.toml"),
 		s.text.Render("           ") + s.subtle.Render("(run: aps-tools config path)"),
 		s.text.Render("API keys   ") + s.subtle.Render("Keychain Access app → search \"aps-tools\""),
+		s.text.Render("Changes    ") + s.subtle.Render("activity.log, next to the settings file"),
+		s.text.Render("           ") + s.subtle.Render("(run: aps-tools log)"),
 		"",
 		section("Documentation"),
 		s.subtle.Render("github.com/yippieskippie24/aps-tools → docs/"),
@@ -109,6 +111,7 @@ func (a App) viewHelp(w int) string {
 		"",
 		section("Commands outside the app"),
 		key(19, "aps-tools doctor", "Test connections"),
+		key(19, "aps-tools log", "Recent changes the tool made"),
 		key(19, "aps-tools --help", "List every command"),
 	}, "\n")
 

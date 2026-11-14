@@ -30,6 +30,7 @@ const (
 	screenDoctor
 	screenHelp
 	screenCheck
+	screenOnboard
 )
 
 // maxContentWidth keeps lines readable on very wide terminals.
@@ -55,12 +56,15 @@ type App struct {
 
 	// Check a member screen (see checkscreen.go)
 	member memberCheck
+
+	// Onboard a new member screen (see onboardscreen.go)
+	onboard onboarding
 }
 
 // New creates the app. deps is normally doctor.DefaultDeps().
 func New(deps doctor.Deps) App {
 	s := newStyles(true)
-	return App{deps: deps, styles: s, width: 80, height: 24, member: newMemberCheck(s)}
+	return App{deps: deps, styles: s, width: 80, height: 24, member: newMemberCheck(s), onboard: newOnboarding(s)}
 }
 
 // Run starts the app and blocks until the user quits.
@@ -104,6 +108,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		a.styles = newStyles(msg.IsDark())
 		a.member.restyle(a.styles)
+		a.onboard.restyle(a.styles)
 		return a, nil
 
 	case tea.WindowSizeMsg:
@@ -111,7 +116,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case spinTickMsg:
-		if !a.checking && !a.member.running {
+		busy := a.onboard.phase == obPlanning || a.onboard.phase == obRunning
+		if !a.checking && !a.member.running && !busy {
 			return a, nil
 		}
 		a.spin = (a.spin + 1) % len(spinnerFrames)
@@ -139,6 +145,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case planDoneMsg, stepDoneMsg, obCopiedMsg:
+		a, cmd, _ := a.onboardMsg(msg)
+		return a, cmd
+
 	case tea.KeyPressMsg:
 		// ctrl+c always quits, from anywhere.
 		if msg.String() == "ctrl+c" {
@@ -153,6 +163,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.updateHelp(msg)
 		case screenCheck:
 			return a.updateCheck(msg)
+		case screenOnboard:
+			return a.updateOnboard(msg)
 		}
 	}
 	return a, nil
@@ -189,6 +201,8 @@ func (a App) choose(item menuItem) (tea.Model, tea.Cmd) {
 	switch item.action {
 	case actionCheck:
 		return a.openCheck()
+	case actionOnboard:
+		return a.openOnboard()
 	case actionDoctor:
 		a.screen = screenDoctor
 		a.checking = true
@@ -248,6 +262,9 @@ func (a App) View() tea.View {
 	case screenCheck:
 		body = a.viewCheck(w)
 		keys = a.checkKeys()
+	case screenOnboard:
+		body = a.viewOnboard(w)
+		keys = a.onboardKeys()
 	}
 
 	page := lipgloss.JoinVertical(lipgloss.Left,

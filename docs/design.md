@@ -101,14 +101,14 @@ stop at.
 - Release pipeline: GitHub Releases + Homebrew tap, so `brew install` works from day one.
 - Documentation structure (this file, handover guide, architecture, decision records).
 
-### Phase 1 — Member check (read-only) 🔨 in progress
+### Phase 1 — Member check (read-only) ✅ done
 
 Progress: the check engine, `aps-tools check`, the "Check a member" screen, guided setup, and
 1Password support are built. **Jira is connected and confirmed with real data.** **Cloudflare**:
 the full check is built: verification, all-members list (`LIST_NEWS`), and other lists. So is
 `cloudflare discover`, which counts undeliverable list members. It works on the test account
 now, and on the APS account after the December 2026 switch-over
-([decision 0007](decisions/0007-mailing-lists-in-worker-variables.md)). **Discourse**: the check and `discourse discover` are built and connected to the real forum. **Google Sheet**: the check and `sheet discover` are built. **Every Phase 1 system is now built**; the Cloudflare list check has been confirmed against a test account running the list Worker. What remains is connecting the sheet, which is waiting on the owner's share approval.
+([decision 0007](decisions/0007-mailing-lists-in-worker-variables.md)). **Discourse**: the check and `discourse discover` are built and connected to the real forum. **Google Sheet**: the check and `sheet discover` are built. **Every Phase 1 system is now built**; the Cloudflare list check has been confirmed against a test account running the list Worker. The sheet is now connected too, so all four systems are connected with real data.
 
 - Connectors for Google Sheet, Cloudflare, Jira, Discourse that can **look up** a member.
 - `aps-tools check <email>` and a TUI "Check a member" screen.
@@ -117,13 +117,16 @@ now, and on the APS account after the December 2026 switch-over
 - Read-only means zero risk, and it proves every API connection works.
 
 ### Phase 2 — Onboarding + welcome email
-Detailed plan (draft, for review): [plans/phase-2-onboarding.md](plans/phase-2-onboarding.md).
+Detailed plan: [plans/phase-2-onboarding.md](plans/phase-2-onboarding.md). 🔨 In progress: the
+onboarding framework is built (`aps-tools onboard`, the app screen, `--dry-run`, the activity
+log). Today it plans, gates on vetting, and lists the steps to do by hand. Each system's steps
+become automatic as they're built ([decision 0011](decisions/0011-onboarding-plan-then-run.md)).
 - "Onboard a new member" flow: preview every step → run → live status per step.
 - Every step is **idempotent**: it checks first, only acts if something is missing, and can be
   safely re-run to finish a half-done onboarding.
 - Welcome email template (written together) and the HTML copy page.
 - Write setup status back to the Google Sheet.
-- Local activity log (SQLite).
+- Local activity log (a plain text file; see [decision 0011](decisions/0011-onboarding-plan-then-run.md)).
 
 ### Phase 3 — Keeping on top of things
 - **Bulk audit:** compare the Google Sheet against every system and list the gaps.

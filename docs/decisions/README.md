@@ -44,3 +44,4 @@ What does this make easier or harder?
 | [0008](0008-discourse-user-api-key.md) | Connect to Discourse with a user API key approved in the browser |
 | [0009](0009-google-service-account.md) | Read the membership Google Sheet as a service account |
 | [0010](0010-members-before-vetting-began.md) | Members who joined before "App vetted" was used count as vetted |
+| [0011](0011-onboarding-plan-then-run.md) | Onboarding plans first, lists manual steps, and logs to a text file |

@@ -116,15 +116,40 @@ func (c *Connector) load(ctx context.Context) ([]Member, error) {
 
 // CheckMember implements connectors.Connector. Read-only.
 func (c *Connector) CheckMember(ctx context.Context, email string) (connectors.MemberStatus, error) {
+	_, st, err := c.LookupMember(ctx, email)
+	return st, err
+}
+
+// LookupMember implements connectors.Directory: the member check, plus the
+// member's name and row, so onboarding doesn't need them retyped. Read-only.
+func (c *Connector) LookupMember(ctx context.Context, email string) (connectors.Person, connectors.MemberStatus, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
 	members, err := c.load(ctx)
 	if err != nil {
-		return connectors.MemberStatus{}, err
+		return connectors.Person{}, connectors.MemberStatus{}, err
 	}
-	st := memberStatus(Find(members, email), time.Now(), c.vettingStarted)
+	rows := Find(members, email)
+	st := memberStatus(rows, time.Now(), c.vettingStarted)
 	if note := c.newerTabNote(ctx); note != "" {
 		st.Details = append(st.Details, note)
 	}
-	return st, nil
+	p := connectors.Person{Email: email}
+	if len(rows) > 0 {
+		m := pick(rows, c.vettingStarted)
+		p.FirstName, p.LastName, p.Row = m.FirstName, m.LastName, m.Row
+	}
+	return p, st, nil
+}
+
+// pick chooses which row to judge a member on when they're listed more
+// than once: a ready row if there is one, else the last.
+func pick(rows []Member, vettingStarted time.Time) Member {
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i].Ready(vettingStarted) {
+			return rows[i]
+		}
+	}
+	return rows[len(rows)-1]
 }
 
 // newerTabNote warns when the sheet has a newer dated copy of the saved tab
@@ -172,14 +197,7 @@ func memberStatus(rows []Member, now, vettingStarted time.Time) connectors.Membe
 			Fix:     "If they've applied, check with the membership chair — they add new members to the sheet."}
 	}
 
-	// With duplicates, judge on a ready row if there is one, else the last.
-	m := rows[len(rows)-1]
-	for i := len(rows) - 1; i >= 0; i-- {
-		if rows[i].Ready(vettingStarted) {
-			m = rows[i]
-			break
-		}
-	}
+	m := pick(rows, vettingStarted)
 
 	var details []string
 	who := "Row " + strconv.Itoa(m.Row)

@@ -12,6 +12,7 @@ type action int
 const (
 	actionComingSoon action = iota // feature not built yet; explain when it arrives
 	actionCheck
+	actionOnboard
 	actionDoctor
 	actionHelp
 	actionQuit
@@ -30,7 +31,7 @@ type menuItem struct {
 // and handle its action in App.choose (app.go).
 var menu = []menuItem{
 	{key: "1", title: "Check a member", desc: "See a member's status in every APS system", action: actionCheck},
-	{key: "2", title: "Onboard a new member", desc: "Set up a new member everywhere, then draft their welcome email", action: actionComingSoon, phase: "Phase 2"},
+	{key: "2", title: "Onboard a new member", desc: "Set up a new member everywhere, then draft their welcome email", action: actionOnboard},
 	{key: "3", title: "Test connections", desc: "Make sure the tool can reach every system", action: actionDoctor},
 	{key: "4", title: "Help", desc: "Keys, documentation, and where things are kept", action: actionHelp},
 	{key: "5", title: "Quit", desc: "Close the app", action: actionQuit},

@@ -1,6 +1,9 @@
 # Plan: Phase 2 — guided onboarding
 
-- **Status:** Draft for the webmaster's review. Nothing here is built yet.
+- **Status:** In progress. Step 1 of the build order (the framework) is built: `aps-tools
+  onboard`, the app screen, `--dry-run`, and the activity log
+  ([decision 0011](../decisions/0011-onboarding-plan-then-run.md)). No system is changed by the
+  tool yet.
 - **Date:** 2026-11-13
 
 Phase 1 can **see** where a member stands in every system. Phase 2 lets the tool **do** the
@@ -83,7 +86,7 @@ Each item is usable on its own, safest first:
    - the activity log;
    - the "Onboard" menu item, which today shows "coming soon".
 
-   No outside system is changed yet; it runs the plan and stops.
+   No outside system is changed yet; it runs the plan and stops. ✅ **Built.**
 2. **Welcome email copy page.** It changes nothing anywhere, and only needs the text.
 3. **Mailing list (Cloudflare):** destination address, then `LIST_NEWS`. Tried on the test account
    first.

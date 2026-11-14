@@ -44,6 +44,8 @@ New webmaster? Start with docs/handover.md in the GitHub repository.`,
 	root.SetVersionTemplate("{{.Version}}\n")
 	root.AddCommand(
 		newCheckCmd(),
+		newOnboardCmd(),
+		newLogCmd(),
 		newSetupCmd(),
 		newCloudflareCmd(),
 		newDiscourseCmd(),

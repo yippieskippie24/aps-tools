@@ -2,11 +2,14 @@ package tui
 
 import (
 	"context"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/yippieskippie24/aps-tools/internal/activity"
 	"github.com/yippieskippie24/aps-tools/internal/config"
 	"github.com/yippieskippie24/aps-tools/internal/connectors"
 	"github.com/yippieskippie24/aps-tools/internal/doctor"
@@ -57,10 +60,14 @@ func TestMenuWrapsAround(t *testing.T) {
 }
 
 func TestComingSoonShowsAMessage(t *testing.T) {
+	// Every current item is built, so add a pretend future one.
+	saved := menu
+	t.Cleanup(func() { menu = saved })
+	menu = append(slices.Clone(saved), menuItem{key: "9", title: "Board changes", action: actionComingSoon, phase: "Phase 3"})
 	a := New(testDeps())
-	a, _ = press(t, a, "2") // "Onboard a new member" arrives in Phase 2
-	if !strings.Contains(a.status, "Phase 2") {
-		t.Errorf("status = %q, want it to mention Phase 2", a.status)
+	a, _ = press(t, a, "9")
+	if !strings.Contains(a.status, "Phase 3") {
+		t.Errorf("status = %q, want it to mention Phase 3", a.status)
 	}
 	if a.screen != screenHome {
 		t.Error("an unbuilt feature should stay on the home screen")
@@ -222,4 +229,140 @@ func runBatch(cmd tea.Cmd) []tea.Msg {
 		return out
 	}
 	return []tea.Msg{msg}
+}
+
+// fakeSheet is a pretend membership sheet for onboarding tests.
+type fakeSheet struct{ status connectors.MemberStatus }
+
+func (fakeSheet) ID() string                           { return "sheet" }
+func (fakeSheet) Name() string                         { return "Membership sheet" }
+func (fakeSheet) Missing() []string                    { return nil }
+func (fakeSheet) TestConnection(context.Context) error { return nil }
+func (f fakeSheet) CheckMember(context.Context, string) (connectors.MemberStatus, error) {
+	return f.status, nil
+}
+func (f fakeSheet) LookupMember(_ context.Context, email string) (connectors.Person, connectors.MemberStatus, error) {
+	return connectors.Person{Email: email, FirstName: "Alex", LastName: "Example", Row: 42}, f.status, nil
+}
+
+// fakeList is a pretend system the tool can set members up in.
+type fakeList struct{ calls *int }
+
+func (fakeList) ID() string                           { return "list" }
+func (fakeList) Name() string                         { return "Mailing list" }
+func (fakeList) Missing() []string                    { return nil }
+func (fakeList) TestConnection(context.Context) error { return nil }
+func (fakeList) CheckMember(context.Context, string) (connectors.MemberStatus, error) {
+	return connectors.MemberStatus{State: connectors.StateMissing, Summary: "Not on the list."}, nil
+}
+func (fakeList) PlanOnboard(context.Context, connectors.Person, connectors.MemberStatus) (string, error) {
+	return "Add them to news@", nil
+}
+func (f fakeList) Onboard(context.Context, connectors.Person) (string, error) {
+	*f.calls++
+	return "Added to news@", nil
+}
+
+// onboardDeps connects a vetted (or not) member to a list the tool can
+// change, with the activity log in a temporary folder.
+func onboardDeps(t *testing.T, vetted bool, calls *int) doctor.Deps {
+	deps := testDeps()
+	dir := t.TempDir()
+	deps.ConfigPath = func() (string, error) { return filepath.Join(dir, "config.toml"), nil }
+	st := connectors.MemberStatus{State: connectors.StateOK, Summary: "Vetted."}
+	if !vetted {
+		st = connectors.MemberStatus{State: connectors.StatePending, Summary: "On the list as New.", Fix: "Wait for the chair."}
+	}
+	deps.Connectors = func(*config.Config, secrets.Store) []connectors.Connector {
+		return []connectors.Connector{fakeSheet{st}, fakeList{calls}, fakeSystem{connectors.MemberStatus{
+			State: connectors.StateMissing, Summary: "Not a customer.", Fix: "Add them by hand."}}}
+	}
+	return deps
+}
+
+// settle runs a command's background work and feeds the results back in,
+// repeatedly, until nothing is left to do.
+func settle(t *testing.T, a App, cmd tea.Cmd) App {
+	t.Helper()
+	for i := 0; cmd != nil && i < 20; i++ {
+		var next []tea.Cmd
+		for _, msg := range runBatch(cmd) {
+			m, c := a.Update(msg)
+			a = m.(App)
+			next = append(next, c)
+		}
+		cmd = tea.Batch(next...)
+	}
+	return a
+}
+
+func TestOnboardScreen(t *testing.T) {
+	calls := 0
+	deps := onboardDeps(t, true, &calls)
+	a := New(deps)
+	a, _ = press(t, a, "2")
+	if a.screen != screenOnboard {
+		t.Fatal("2 should open Onboard a new member")
+	}
+	a = typeText(t, a, "alex@example.com")
+	a, cmd := press(t, a, "enter")
+	a = settle(t, a, cmd)
+	if a.onboard.phase != obPlan {
+		t.Fatalf("phase = %v, want the plan", a.onboard.phase)
+	}
+	view := a.View().Content
+	for _, want := range []string{"Alex Example <alex@example.com>", "(row 42)", "Add them to news@", "Add them by hand.", "copy checklist"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("plan screen is missing %q", want)
+		}
+	}
+
+	// g asks first; n cancels without changing anything.
+	a, _ = press(t, a, "g")
+	if a.onboard.phase != obConfirm || !strings.Contains(a.View().Content, "Make 1 change for Alex Example") {
+		t.Fatalf("g should ask before changing anything (phase %v)", a.onboard.phase)
+	}
+	a, _ = press(t, a, "n")
+	if a.onboard.phase != obPlan || calls != 0 {
+		t.Fatalf("cancel: phase %v, %d changes made", a.onboard.phase, calls)
+	}
+
+	// g then y runs the step.
+	a, _ = press(t, a, "g")
+	a, cmd = press(t, a, "y")
+	a = settle(t, a, cmd)
+	if a.onboard.phase != obDone || calls != 1 {
+		t.Fatalf("after go: phase %v, %d changes made", a.onboard.phase, calls)
+	}
+	if view := a.View().Content; !strings.Contains(view, "Added to news@") || !strings.Contains(view, "activity log") {
+		t.Errorf("done screen doesn't show the result:\n%s", view)
+	}
+	path, _ := deps.ConfigPath()
+	lines, _ := activity.Open(filepath.Join(filepath.Dir(path), activity.FileName)).Recent(10)
+	if len(lines) != 3 || !strings.Contains(lines[1], "Added to news@") {
+		t.Errorf("activity log = %v", lines)
+	}
+
+	// Going again does nothing more.
+	a, _ = press(t, a, "g")
+	if a.onboard.phase != obDone || calls != 1 {
+		t.Errorf("g after finishing: phase %v, %d changes", a.onboard.phase, calls)
+	}
+}
+
+func TestOnboardScreenStopsWhenNotVetted(t *testing.T) {
+	calls := 0
+	a := New(onboardDeps(t, false, &calls))
+	a, _ = a.openOnboard()
+	a = typeText(t, a, "alex@example.com")
+	a, cmd := press(t, a, "enter")
+	a = settle(t, a, cmd)
+	view := a.View().Content
+	if !strings.Contains(view, "Not ready to onboard") || !strings.Contains(view, "Wait for the chair.") {
+		t.Errorf("not-vetted screen:\n%s", view)
+	}
+	a, _ = press(t, a, "g")
+	if a.onboard.phase != obPlan || calls != 0 {
+		t.Errorf("an unvetted member must never be set up (phase %v, %d changes)", a.onboard.phase, calls)
+	}
 }
